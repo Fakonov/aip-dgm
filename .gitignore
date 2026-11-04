@@ -1,0 +1,34 @@
+# build output
+build/
+build-sim/
+*.bin
+*.elf
+*.map
+sdkconfig.old
+
+# except the docs pointing at them
+!roms/README.md
+
+# ESP-IDF managed dependencies (restored from dependencies.lock)
+managed_components/
+dependencies.lock.bak
+
+# host tools
+*.exe
+*.o
+*.obj
+*.pdb
+*.log
+*.pgm
+*.bmp
+
+# python / node
+__pycache__/
+*.pyc
+node_modules/
+
+# editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

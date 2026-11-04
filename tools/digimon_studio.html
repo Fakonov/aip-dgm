@@ -1,0 +1,1540 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Digimon Passport · 控制台</title>
+<style>
+:root{
+  --ink:#1e2418; --paper:#fffdf7; --bg:#f2eee0; --bg2:#e8e3d2;
+  --glass:#93a06b; --glass2:#a2af7b; --lit:#1b2417;
+  --shell:#3a3f36; --yellow:#ffd928; --danger:#b23a2e;
+  --muted:#6b705c; --ok:#3f6b2c;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--bg);
+  background-image:radial-gradient(circle, rgba(30,36,24,.055) 1px, transparent 1px);
+  background-size:7px 7px;
+  color:var(--ink);
+  font:14px/1.5 "Segoe UI",system-ui,-apple-system,"Microsoft YaHei",sans-serif;
+  min-height:100vh;
+}
+h1,h2,h3{margin:0;font-weight:700;letter-spacing:.02em}
+button{font:inherit;cursor:pointer}
+.mono{font-family:ui-monospace,"Cascadia Mono",Consolas,monospace}
+
+/* ---------------------------------------------------------------- topbar */
+.topbar{
+  position:sticky;top:0;z-index:40;
+  display:flex;align-items:center;gap:14px;
+  padding:10px 18px;
+  background:var(--shell);
+  color:#f4f1e6;
+  border-bottom:3px solid var(--ink);
+  box-shadow:0 4px 0 rgba(30,36,24,.18);
+}
+.vpet{width:26px;height:46px;flex:0 0 auto;filter:drop-shadow(0 2px 0 rgba(0,0,0,.35))}
+.brand{display:flex;align-items:baseline;gap:10px;min-width:0}
+.brand h1{font-size:16px;letter-spacing:.12em;white-space:nowrap}
+.brand .sub{font-size:11px;color:#c8cdb8;letter-spacing:.18em;text-transform:uppercase;white-space:nowrap}
+.spacer{flex:1 1 auto}
+.pill{
+  display:inline-flex;align-items:center;gap:7px;
+  padding:5px 11px;border-radius:999px;
+  background:#2b2f28;border:1.5px solid #555c4d;
+  font-size:12px;letter-spacing:.04em;white-space:nowrap
+}
+.pill .dot{width:8px;height:8px;border-radius:50%;background:#8a8f80;box-shadow:0 0 0 2px rgba(255,255,255,.08)}
+.pill.on .dot{background:#8fe05a}
+.pill.err .dot{background:#e0664f}
+.btn{
+  border:2px solid var(--ink);border-radius:8px;
+  background:var(--paper);color:var(--ink);
+  padding:7px 14px;font-weight:650;letter-spacing:.03em;
+  box-shadow:3px 3px 0 var(--ink);
+  transition:transform .05s, box-shadow .05s;
+}
+.btn:hover{background:#fff}
+.btn:active{transform:translate(3px,3px);box-shadow:0 0 0 var(--ink)}
+.btn.primary{background:var(--yellow)}
+.btn.ghost{background:transparent;color:#f4f1e6;border-color:#6d7463;box-shadow:none}
+.btn.ghost.active{background:var(--yellow);color:var(--ink);border-color:var(--ink)}
+.btn.sm{padding:4px 9px;font-size:12px;border-width:1.5px;box-shadow:2px 2px 0 var(--ink)}
+.btn.danger{background:#f6ddd8;border-color:var(--danger);color:#7d241a;box-shadow:2px 2px 0 var(--danger)}
+.btn:disabled{opacity:.4;cursor:not-allowed;box-shadow:none;transform:none}
+
+/* ------------------------------------------------------------------ tabs */
+.tabs{
+  display:flex;gap:0;padding:0 18px;background:var(--bg2);
+  border-bottom:2px solid var(--ink);position:sticky;top:66px;z-index:30;
+}
+.tab{
+  appearance:none;border:2px solid var(--ink);border-bottom:none;
+  border-radius:10px 10px 0 0;background:#d8d3c0;color:#4a503f;
+  padding:9px 20px;margin:8px 4px 0 0;font-weight:650;letter-spacing:.03em;
+  position:relative;top:2px;
+}
+.tab .en{font-size:10px;color:var(--muted);letter-spacing:.14em;display:block;margin-top:1px}
+.tab[aria-selected="true"]{background:var(--paper);color:var(--ink);top:0;padding-bottom:11px}
+.tab[aria-selected="true"] .en{color:#7c8168}
+
+/* ------------------------------------------------------------------ page */
+main{max-width:1180px;margin:0 auto;padding:20px 18px 40px;transition:padding .18s}
+body.log-open main{padding-right:418px}
+body.log-open .tabs{padding-right:418px}
+@media(max-width:1180px){body.log-open main{padding-right:18px}}
+.page{display:none}
+.page.active{display:block}
+.grid{display:grid;gap:16px}
+.grid > .card{min-width:0}
+pre{max-width:100%}
+.g2{grid-template-columns:1.25fr .75fr}
+@media(max-width:900px){.g2{grid-template-columns:1fr}}
+.card{
+  background:var(--paper);border:2px solid var(--ink);border-radius:12px;
+  box-shadow:5px 5px 0 rgba(30,36,24,.85);
+  padding:14px 16px;
+}
+.grid.g2 > .card{align-self:start}
+.card h2{font-size:14px;letter-spacing:.08em;text-transform:uppercase;display:flex;align-items:center;gap:8px}
+.card h2 .tag{font-size:10px;padding:2px 7px;border-radius:999px;background:var(--glass2);color:#20260f;letter-spacing:.05em;text-transform:none}
+.hint{color:var(--muted);font-size:12px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.sep{height:1px;background:rgba(30,36,24,.15);margin:12px 0}
+
+/* ------------------------------------------------------------- rom slots */
+.slots{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px;margin-top:12px}
+.slot{
+  border:2px solid var(--ink);border-radius:10px;background:#fbf9ef;
+  padding:10px 11px;position:relative;box-shadow:3px 3px 0 rgba(30,36,24,.75);
+}
+.slot.cur{background:#f3f7e4;border-color:#3f6b2c}
+.slot.empty{opacity:.72;box-shadow:2px 2px 0 rgba(30,36,24,.4)}
+.slot .no{font:700 11px/1 ui-monospace,monospace;letter-spacing:.1em;color:var(--muted)}
+.slot .nm{font-weight:750;font-size:15px;margin:3px 0 2px;display:flex;align-items:center;gap:6px}
+.slot .nm em{font-style:normal;font-size:10px;background:var(--ok);color:#fff;padding:1px 6px;border-radius:999px;letter-spacing:.06em}
+.slot .meta{font-size:11.5px;color:var(--muted);font-family:ui-monospace,monospace}
+.slot .acts{display:flex;gap:6px;margin-top:9px;flex-wrap:wrap}
+.play{font-weight:750;color:var(--ink)}
+
+/* ---------------------------------------------------------------- stats */
+.statgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:9px;margin-top:12px}
+.stat{border:1.5px solid rgba(30,36,24,.35);border-radius:9px;background:#fbf9ef;padding:8px 10px}
+.stat .k{font-size:10.5px;letter-spacing:.06em;color:var(--muted);text-transform:uppercase}
+.stat .k b{display:block;color:var(--ink);font-size:12px;letter-spacing:.02em;text-transform:none;margin-top:1px}
+.stat .v{font:750 20px/1.15 ui-monospace,monospace;margin-top:5px}
+.stat .v small{font-size:11px;font-weight:600;color:var(--muted);margin-left:4px}
+.bar{height:6px;border:1.5px solid var(--ink);border-radius:999px;background:#efe9d6;overflow:hidden;margin-top:6px}
+.bar i{display:block;height:100%;background:var(--glass)}
+.bar.warn i{background:var(--danger)}
+
+/* ---------------------------------------------------------------- evo */
+.evo{display:flex;flex-direction:column;gap:8px;margin-top:12px}
+.evorow{
+  display:grid;grid-template-columns:140px 1fr;gap:10px;align-items:center;
+  border:1.5px solid rgba(30,36,24,.3);border-radius:9px;background:#fbf9ef;padding:9px 11px;
+}
+.evorow .to{font-weight:750}
+.evorow .to small{display:block;color:var(--muted);font-weight:500;font-size:11px}
+.cond{display:flex;gap:6px;flex-wrap:wrap}
+.chip{
+  font:600 11px/1 ui-monospace,monospace;padding:4px 8px;border-radius:999px;
+  background:#e9efd6;border:1.5px solid #b9c79a;color:#2f3a1c;white-space:nowrap
+}
+.chip.hit{background:var(--yellow);border-color:#c9a800;color:#2b2400}
+.chip.miss{background:#eeebe0;border-color:#cfc9b6;color:#8a8578}
+.tree{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px;margin-top:12px}
+.tnode{border:1.5px dashed rgba(30,36,24,.35);border-radius:9px;padding:8px 10px;background:#fbf9ef}
+.tnode b{font-size:13px}
+.tnode span{display:block;font-size:11px;color:var(--muted)}
+.locked{filter:grayscale(.7);opacity:.55}
+/* ---- 进化树（配图版）：版式取自说明书《V-Pet Version 1-5》的 Ver.1 分解图 ---- */
+.sumline{margin-top:10px;font-size:12.5px;line-height:1.5;padding:8px 11px;border-radius:9px;
+  background:#fff7c9;border:1.5px solid #d9c66a}
+.sumline b{font-size:14px}
+.evoflow{position:relative;margin-top:12px}
+.evoflow .links{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none;overflow:visible;z-index:0}
+.evoflow .lane{display:flex;gap:26px;align-items:flex-start;position:relative}
+.evoflow .column{display:flex;flex-direction:column;gap:9px;flex:1 1 0;min-width:0;position:relative;z-index:1;align-items:flex-start}
+/* 第一列只有一张卡：让它垂直居中，连线才会从中间向两边散开，像树而不是瀑布 */
+.evoflow .column:first-of-type{justify-content:center}
+.evoflow .colhead{font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--muted);font-weight:800}
+.evocard{display:flex;gap:9px;align-items:center;padding:6px 9px 6px 6px;border-radius:11px;max-width:300px;
+  border:2.5px solid var(--card,#3a3f36);background:#fbf9ef;box-shadow:0 2px 0 rgba(30,36,24,.15);
+  position:relative;transition:transform .12s ease}
+.evocard img{width:44px;height:44px;border-radius:7px;display:block;flex:0 0 auto;background:#e8e3d2}
+.evocard .nm{font-weight:800;font-size:13px;line-height:1.15}
+.evocard .en{font-size:10px;color:var(--muted);letter-spacing:.05em;text-transform:uppercase}
+.evocard .cond{font-size:10px;color:var(--muted);margin-top:2px;line-height:1.3}
+.evocard.cur{background:#eef3df}
+.evocard.dim{opacity:.52}
+.evocard.dim img{filter:grayscale(.45)}
+.evocard.hit{background:#fffdf0;border-color:#c9541f;
+  box-shadow:0 0 0 3px rgba(255,217,40,.5),0 2px 0 rgba(30,36,24,.15)}
+.evocard.hit .nm::after{content:" ◀ 当前";color:#c9541f;font-size:9px;letter-spacing:.06em}
+
+/* 全进化表：同一套卡片语言，纯网格不带线 */
+.tree{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.treehead{flex:0 0 100%;font-size:10px;letter-spacing:.13em;text-transform:uppercase;
+  color:var(--muted);font-weight:800;margin-top:4px}
+.tnode{display:flex;align-items:center;gap:8px;border:2px solid var(--card,#3a3f36);border-radius:9px;
+  background:#fbf9ef;padding:4px 10px 4px 4px}
+.tnode img{width:30px;height:30px;border-radius:5px;display:block;background:#e8e3d2}
+.tnode b{display:block;font-size:12px}
+.tnode span{display:block;font-size:9.5px;color:var(--muted);letter-spacing:.04em}
+.tnode.cur{background:#fff7c9;box-shadow:0 0 0 2.5px rgba(255,217,40,.65)}
+
+/* 其它数据（默认折叠） */
+details.rest{margin-top:14px}
+details.rest summary{cursor:pointer;font-size:11.5px;color:var(--muted);letter-spacing:.04em;
+  padding:5px 0;user-select:none}
+details.rest summary:hover{color:var(--ink)}
+details.rest[open] summary{margin-bottom:4px}
+
+.chart{margin-top:8px}
+.chart img{display:block;width:100%;max-width:660px;height:auto;border:2px solid var(--ink);border-radius:10px;background:#fff;box-shadow:4px 4px 0 rgba(30,36,24,.6)}
+
+/* ----------------------------------------------------------------- ram */
+.ramwrap{overflow:auto;border:2px solid var(--ink);border-radius:10px;background:#fbf9ef}
+table.ram{border-collapse:collapse;font:12px/1.2 ui-monospace,monospace;width:100%}
+table.ram th,table.ram td{border:1px solid rgba(30,36,24,.16);padding:3px 4px;text-align:center;min-width:20px}
+table.ram th{background:#e8e3d2;font-weight:700;position:sticky;top:0}
+table.ram td.addr{background:#eee9d8;font-weight:700;color:var(--muted)}
+table.ram td.z{color:#b9b3a0}
+table.ram td.hot{background:var(--yellow);color:#2b2400;font-weight:700}
+table.ram td.sel{outline:2px solid var(--danger);outline-offset:-2px}
+.raminfo{margin-top:8px;font-size:12px;color:var(--muted)}
+
+/* --------------------------------------------------------- console side rail */
+.logbar{
+  position:fixed; top:66px; right:0; bottom:0; left:auto;
+  width:400px; min-width:400px; max-width:400px;
+  display:flex; flex-direction:column;
+  background:#20241d; color:#e9e6d8;
+  border-left:3px solid var(--ink);
+  z-index:45;
+  transform:translateX(100%);
+  transition:transform .18s ease;
+}
+.logbar.open{transform:none; box-shadow:-6px 0 0 rgba(30,36,24,.22)}
+.logbar .head{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:8px 12px;font-size:12px;border-bottom:1.5px solid #4a5045}
+.logbar .head .t{font-weight:700;letter-spacing:.1em;flex:1 1 auto}
+.logbar .head input[type=text]{flex:1 1 110px;background:#14170f;border:1.5px solid #555c4d;color:#e9e6d8;border-radius:7px;padding:3px 9px;font-size:12px}
+.log{flex:1 1 auto;min-width:0;overflow:auto;font:12px/1.45 ui-monospace,monospace;background:#14170f;padding:8px 10px}
+.ln{display:block;padding:1px 0;white-space:pre-wrap}
+.ln .ts{color:#6d7463;margin-right:8px}
+.ln.i{color:#cfd4c2}.ln.s{color:#a8e07a}.ln.w{color:#f0cf6a}.ln.e{color:#f08a72}
+.ln.p{color:#9fb4e8}.ln.r{color:#e8b98a}
+.ln.hidden{display:none}
+.toast{
+  position:fixed;left:50%;bottom:44px;transform:translate(-50%,16px);
+  background:var(--ink);color:#fff;padding:9px 16px;border-radius:9px;
+  font-size:13px;opacity:0;pointer-events:none;transition:.18s;z-index:60;
+}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+.toast.err{background:var(--danger)}
+dialog{border:3px solid var(--ink);border-radius:14px;padding:0;max-width:640px;background:var(--paper)}
+dialog::backdrop{background:rgba(30,36,24,.45)}
+dialog .body{padding:18px 20px}
+dialog h3{font-size:16px;margin-bottom:8px}
+dialog p,dialog li{font-size:13px;color:#3a4033}
+dialog code{background:#eee9d8;padding:1px 5px;border-radius:4px;font-size:12px}
+pre{background:#eee9d8;border:1.5px solid rgba(30,36,24,.3);border-radius:8px;padding:10px;font-size:12px;overflow:auto}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <svg class="vpet" viewBox="0 0 32 56" aria-hidden="true">
+    <rect x="1.5" y="1.5" width="29" height="53" rx="11" fill="#4a5045" stroke="#12160f" stroke-width="2.5"/>
+    <rect x="6" y="9" width="20" height="17" rx="3" fill="#93a06b" stroke="#12160f" stroke-width="1.6"/>
+    <path d="M9 20h4v-3h6v3h4" fill="none" stroke="#1b2417" stroke-width="1.6"/>
+    <circle cx="9" cy="37" r="3.2" fill="#ffd928" stroke="#12160f" stroke-width="1.4"/>
+    <circle cx="16" cy="40" r="3.2" fill="#ffd928" stroke="#12160f" stroke-width="1.4"/>
+    <circle cx="23" cy="37" r="3.2" fill="#ffd928" stroke="#12160f" stroke-width="1.4"/>
+    <rect x="11" y="47" width="10" height="3.5" rx="1.6" fill="#12160f"/>
+  </svg>
+  <div class="brand">
+    <h1>DIGIMON PASSPORT</h1>
+    <span class="sub">控制台 · Studio v3</span>
+  </div>
+  <span class="spacer"></span>
+  <span class="pill" id="pill"><span class="dot"></span><span id="pillText">未连接</span></span>
+  <button class="btn primary" id="btnConnect">连接设备</button>
+  <button class="btn ghost" id="btnToggleLog" title="串口日志">日志</button>
+  <button class="btn ghost" id="btnHelp" title="帮助">?</button>
+</header>
+
+<nav class="tabs" role="tablist">
+  <button class="tab" role="tab" aria-selected="true" data-tab="rom">ROM / 存档<span class="en">ROM &amp; SAVE</span></button>
+  <button class="tab" role="tab" aria-selected="false" data-tab="care">养成<span class="en">CARE</span></button>
+  <button class="tab" role="tab" aria-selected="false" data-tab="debug">调试<span class="en">DEBUG</span></button>
+</nav>
+
+<main>
+
+<!-- ============================================================ PAGE 1 -->
+<section class="page active" id="page-rom">
+  <div class="grid g2">
+    <div class="card">
+      <h2>机内 ROM 槽 <span class="tag" id="romTag">未读取</span></h2>
+      <div class="hint">8 个槽 × 32 KB（4 KB 头 + 16 KB 镜像）。PLAY TIME 来自该槽存档旁记的养育时长（NVS <code>a0..a7</code>）。</div>
+      <div class="slots" id="romSlots"></div>
+      <div class="row" style="margin-top:12px">
+        <button class="btn sm" id="btnRomRefresh">刷新 ROMINFO</button>
+        <button class="btn sm" id="btnAges">刷新 AGES</button>
+        <input type="file" id="romFile" accept=".bin,.rom" multiple hidden>
+        <span class="hint">支持一次多选，自动铺空槽。</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>当前存档 <span class="tag" id="curTag">—</span></h2>
+      <div class="hint">设备只认「当前 ROM」的那一档，切换槽请先在左边按「启动」。</div>
+      <div class="row" style="margin-top:12px">
+        <button class="btn sm primary" id="btnExportFile">导出到文件</button>
+        <button class="btn sm" id="btnImportFile">从文件导入</button>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <button class="btn sm danger" id="btnSaveDel">重置当前存档</button>
+      </div>
+      <input type="file" id="fileInput" accept=".hex,.txt,.bin" hidden>
+      <div class="sep"></div>
+      <div class="hint">
+        <b>导出</b>：设备里当前存档 → 直接下载成 <code>.hex</code><br>
+        <b>导入</b>：选 <code>.hex</code> / <code>.bin</code> → 校验 → 写进设备<br>
+        中间不落浏览器缓存，选完就是最终结果。
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ PAGE 2 -->
+<section class="page" id="page-care">
+<div class="card" style="grid-row:span 2">
+      <h2>进化路线 <span class="tag">EVOLUTION</span></h2>
+      <div class="hint">版式照说明书的分解图：卡片 = 一只数码兽，彩线 = 进化方向。命中当前数据的路线用橙线点亮，其余压暗但保留。阈值来自 ROM <code>0x0D10</code> 跑遍 14112 种组合的实测结果。</div>
+      <div class="evo" id="evoList"></div>
+    </div>
+
+  <div class="grid g2">
+    <div class="card">
+      <h2>当前数码兽 <span class="tag" id="careTag">STATE</span></h2>
+      <div class="row" style="margin-top:6px;align-items:flex-end;gap:16px">
+        <div>
+          <div class="hint">Species</div>
+          <div style="font-size:26px;font-weight:800;line-height:1.1" id="careName">—</div>
+          <div class="hint" id="careNameEn">—</div>
+        </div>
+        <div style="margin-left:auto;text-align:right">
+          <div class="hint">Play time</div>
+          <div class="mono" style="font-size:20px;font-weight:750" id="carePlay">—</div>
+        </div>
+      </div>
+      <div class="sep"></div>
+      <div class="row">
+        <button class="btn sm" id="btnState">刷新 STATE</button>
+        <span class="hint" id="careEvoHint">距下次进化 —</span>
+      </div>
+      <div class="bar" id="careEvoBar"><i style="width:0%"></i></div>
+      <div class="sep"></div>
+      <h3 style="font-size:12px;letter-spacing:.08em;color:var(--muted)">跳过时间 SKIP TIME</h3>
+      <div class="row" style="margin-top:8px">
+        <button class="btn sm" data-skip="5">5 分钟</button>
+        <button class="btn sm" data-skip="30">30 分钟</button>
+        <button class="btn sm" data-skip="60">1 小时</button>
+        <button class="btn sm" data-skip="120">2 小时</button>
+      </div>
+      <div class="hint" style="margin-top:6px">真跑游戏时间，1 分钟 ≈ 1.26 s（2 小时约 2.5 分钟）。</div>
+    </div>
+
+    
+    <div class="card">
+      <h2>养育数据 <span class="tag">CARE DATA</span></h2>
+      <div class="hint">上面英文是 ROM 里的变量名，下面中文是影响进化路线的俗称。</div>
+      <div id="careStats"></div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <h2>Ver.1 全进化表 <span class="tag">13 SPECIES</span></h2>
+    <div class="hint">按 <b>失误 → 训练 → 过量 → 睡眠打断</b> 的顺序判定，先命中先得。当前形态高亮。</div>
+    <div class="tree" id="tree"></div>
+    <div class="sep"></div>
+    <h3 style="font-size:12px;letter-spacing:.08em;color:var(--muted)">官方路线图</h3>
+    <div class="hint">公开版不含说明书扫描图。原始出处是《V-Pet Version 1-5》说明书的 Ver.1 页；有合法扫描件的话，用 <code>tools/cut_evo_cards.py</code> 自己切卡片。</div>
+    <div class="hint" style="margin-top:6px">官方路线以 ROM 实测表为准，
+      两者一致时才敢照抄。</div>
+  </div>
+</section>
+
+<!-- ============================================================ PAGE 3 -->
+<section class="page" id="page-debug">
+  <div class="grid g2">
+    <div class="card">
+      <h2>内存 RAM <span class="tag">0x00–0xFF</span></h2>
+      <div class="hint">page-0 nibble，每格一个 4-bit 值。点格子看地址。</div>
+      <div class="row" style="margin:10px 0">
+        <button class="btn sm" id="btnRam">读取 RAM</button>
+        <button class="btn sm" id="btnDump">DUMP</button>
+        <button class="btn sm" id="btnPetDbg">PET</button>
+      </div>
+      <div class="ramwrap"><table class="ram" id="ramTable"></table></div>
+      <div class="raminfo" id="ramInfo">还没读。</div>
+    </div>
+
+    <div class="card">
+      <h2>工具 <span class="tag">TOOLBOX</span></h2>
+      <div class="hint">原始命令、CRC、协议速查。</div>
+      <div class="row" style="margin-top:10px">
+        <button class="btn sm primary" id="btnSelfTest">连接自检</button>
+        <span class="hint">依次发 ROMINFO / STATE / AGES / RAM / DUMP / PET，谁不回话一目了然</span>
+      </div>
+      <pre id="selfTestOut" style="margin-top:8px">还没跑过。</pre>
+      <div class="sep"></div>
+      <div class="row" style="margin-top:10px">
+        <input type="text" id="cmdInput" placeholder="ROMINFO / DUMP / PET / STATE / RAM / SKIP 30"
+               spellcheck="false"
+               style="flex:1;min-width:180px;padding:8px 10px;border:2px solid var(--ink);border-radius:8px;background:#fbf9ef;font-family:ui-monospace,monospace">
+        <button class="btn sm primary" id="btnSend">发送</button>
+      </div>
+      <div class="sep"></div>
+      <h3 style="font-size:12px;letter-spacing:.08em;color:var(--muted)">CRC32（镜像/存档校验）</h3>
+      <div class="row" style="margin-top:8px">
+        <input type="text" id="crcInput" placeholder="粘贴 hex 或一句文本" spellcheck="false"
+               style="flex:1;min-width:180px;padding:8px 10px;border:2px solid var(--ink);border-radius:8px;background:#fbf9ef">
+        <button class="btn sm" id="btnCrc">算</button>
+      </div>
+      <div class="mono" id="crcOut" style="margin-top:8px;font-size:12px;color:var(--muted)">—</div>
+      <div class="sep"></div>
+      <h3 style="font-size:12px;letter-spacing:.08em;color:var(--muted)">命令速查</h3>
+      <pre>ROMINFO                       扫描 8 个槽
+ROMIN &lt;slot&gt; &lt;len&gt; &lt;crc&gt; [名]  上传（→ ROMREADY → hex → ROMEND）
+ROMOUT &lt;slot&gt;                 读出
+ROMBOOT &lt;slot&gt; / ROMDEL &lt;slot&gt; 启动 / 擦除
+SAVEOUT / SAVEIN              存档导出 / 导入
+SAVEDEL &lt;slot&gt;                清掉该槽存档
+STATE                         一行完整养育数据
+AGES                          8 个槽的 PLAY TIME
+RAM                           0x00–0xFF 内存
+DUMP / PET / SKIP &lt;分钟&gt;      诊断 / 摘要 / 跳过时间</pre>
+    </div>
+  </div>
+</section>
+</main>
+
+<!-- ================================================================= log -->
+<div class="logbar" id="logbar">
+  <div class="head">
+    <span class="t">CONSOLE</span>
+    <button class="btn sm ghost" id="btnCloseLog" title="关闭日志栏">×</button>
+    <input type="text" id="filter" placeholder="过滤…">
+    <span style="font-size:12px;color:#9aa08c" id="counts">0 行</span>
+    <label style="font-size:12px;display:flex;gap:4px;align-items:center"><input type="checkbox" id="autoscroll" checked>跟随</label>
+    <button class="btn sm ghost" id="btnClear">清屏</button>
+    <button class="btn sm ghost" id="btnSaveLog">存日志</button>
+  </div>
+  <div class="log" id="log"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<dialog id="helpDlg">
+  <div class="body">
+    <h3>怎么用</h3>
+    <ol style="padding-left:18px;margin:8px 0">
+      <li>用 <b>Edge / Chrome</b> 打开本文件，点右上「连接设备」，选 USB 串口。</li>
+      <li><b>ROM / 存档</b>：8 个槽的上传 / 读出 / 启动 / 擦除；存档导出、导入、重置。</li>
+      <li><b>养成</b>：当前数码兽、影响进化路线的全部数据、SKIP TIME、进化条件。</li>
+      <li><b>调试</b>：内存、原始命令、CRC 工具。</li>
+    </ol>
+    <p class="hint">固件协议见调试页速查表；本工具单文件、无外部依赖。</p>
+    <div class="row" style="justify-content:flex-end;margin-top:6px">
+      <button class="btn primary" id="btnHelpClose">知道了</button>
+    </div>
+  </div>
+</dialog>
+
+<script>
+(() => {
+"use strict";
+
+/* ------------------------------------------------------------------ const */
+const ROM_SLOTS = 8, ROM_MAX = 16384;
+const HDR = 20, MAGIC = 0x31474744;      /* "DGG1" little-endian */
+const LINE_BYTES = 32;
+const READY_TIMEOUT_MS = 8000, RESULT_TIMEOUT_MS = 20000;
+const ROM_READY_TIMEOUT_MS = 8000, ROM_RESULT_TIMEOUT_MS = 30000;
+
+/* Ver.1 growth chart.  Slots follow the ROM's own 0x1200 dispatch table:
+ * 0 egg, 1..2 baby, 3..4 child, 5..11 adult, 12..14 perfect, 15 grave. */
+const SPECIES = [
+  { slot: 0,  en: "Egg",           zh: "数码蛋" },
+  { slot: 1,  en: "Botamon",       zh: "滚球兽" },
+  { slot: 2,  en: "Koromon",       zh: "小鬼兽" },
+  { slot: 3,  en: "Agumon",        zh: "亚古兽" },
+  { slot: 4,  en: "Betamon",       zh: "比特兽" },
+  { slot: 5,  en: "Greymon",       zh: "暴龙兽" },
+  { slot: 6,  en: "Tyranomon",     zh: "巨龙兽" },
+  { slot: 7,  en: "Meramon",       zh: "火焰兽" },
+  { slot: 8,  en: "Seadramon",     zh: "海龙兽" },
+  { slot: 9,  en: "Numemon",       zh: "鼻涕兽" },
+  { slot: 10, en: "Devimon",       zh: "恶魔兽" },
+  { slot: 11, en: "Airdramon",     zh: "飞龙兽" },
+  { slot: 12, en: "MetalGreymon",  zh: "机械暴龙兽" },
+  { slot: 13, en: "Mamemon",       zh: "豆豆兽" },
+  { slot: 14, en: "Monzaemon",     zh: "熊仔兽" },
+  { slot: 15, en: "Grave",         zh: "墓碑" },
+];
+
+/* 12 rules reproduce all 14,112 measured rows (tools/gen_evo_rules.py checks
+ * this against care_rules_v1.json before they are written here). */
+const EVO_RULES = [
+  { from: 2,  to: 3,  care: [0,3], train: [0,63],  over: [0,6], sleep: [0,12] },
+  { from: 2,  to: 4,  care: [4,6], train: [0,63],  over: [0,6], sleep: [0,12] },
+  { from: 3,  to: 5,  care: [0,3], train: [32,63], over: [0,6], sleep: [0,12] },
+  { from: 3,  to: 7,  care: [0,3], train: [0,31],  over: [0,6], sleep: [0,12] },
+  { from: 3,  to: 6,  care: [4,6], train: [5,15],  over: [3,6], sleep: [0,4] },
+  { from: 3,  to: 8,  care: [4,6], train: [16,63], over: [3,6], sleep: [0,6] },
+  { from: 3,  to: 11, care: [4,6], train: [0,63],  over: [0,6], sleep: [0,12] },
+  { from: 4,  to: 7,  care: [0,3], train: [48,63], over: [0,6], sleep: [0,12] },
+  { from: 4,  to: 8,  care: [0,3], train: [0,47],  over: [0,6], sleep: [0,12] },
+  { from: 4,  to: 9,  care: [4,6], train: [8,31],  over: [0,3], sleep: [9,12] },
+  { from: 4,  to: 10, care: [4,6], train: [8,31],  over: [4,6], sleep: [0,8] },
+  { from: 4,  to: 11, care: [4,6], train: [0,63],  over: [0,6], sleep: [0,12] },
+];
+
+/* 说明书《V-Pet Version 1-5》Ver.1 分解图里裁下来的 14 张卡片（56px, 48 色）。
+ * 图源 docs/pdf_assets/page_img_01.jpg，裁切与编码见 tools/cut_evo_cards.py。 */
+/* 公开版不含说明书扫描图（版权归 Bandai / 原出版方）。这里留空，树状图退化成
+ * 纯色卡片：名字、阶段色、阈值、命中高亮全部照常，只是没有立绘。
+ * 想恢复配图：跑 python tools/cut_evo_cards.py 生成 data URI 再填回来。 */
+const EVO_ART = {};
+
+
+const CMD = "ROMINFO / ROMIN / ROMOUT / ROMDEL / ROMBOOT / SAVEOUT / SAVEIN / SAVEDEL / STATE / AGES / RAM / DUMP / PET / SKIP";
+
+/* --------------------------------------------------------------------- $ */
+const $ = (id) => document.getElementById(id);
+const logEl = $("log");
+const pill = $("pill"), pillText = $("pillText");
+
+/* ------------------------------------------------------------------ state */
+const state = {
+  port: null, reader: null, writer: null, connected: false, buf: "",
+  rom: null, romCur: -1, romSlots: [], romBusy: false,
+  romCollect: null, waitRomReady: null, waitRomResult: null,
+  collecting: null, waitingReady: null, waitingResult: null,
+  ages: new Array(ROM_SLOTS).fill(0),
+  pet: null, ram: new Array(256).fill(-1), ramAt: null,
+  lines: 0, rx: 0, saveBusy: false,
+};
+
+/* -------------------------------------------------------------------- log */
+function stamp() {
+  const d = new Date(), p = (n) => String(n).padStart(2, "0");
+  return p(d.getHours()) + ":" + p(d.getMinutes()) + ":" + p(d.getSeconds());
+}
+function log(text, level = "i") {
+  const ln = document.createElement("div");
+  ln.className = "ln " + level;
+  const t = document.createElement("span"); t.className = "ts"; t.textContent = stamp();
+  /* Wrap by the measured width of the rail: Chrome refuses to break a long
+   * token inside this narrow flex box, and CSS word-break silently loses the
+   * overflow, so compute the break points here.  CJK counts 2, ASCII 1. */
+  /* fixed, not measured: the rail is still translated off-screen when the
+   * first lines are logged, so clientWidth reads 0 there. 44 units ~= 317 px. */
+  const perUnit = 44;
+  const src = String(text);
+  let buf = "", line = "", w = 0;
+  for (const ch of src) {
+    const cw = /[\u2e80-\u9fff\uff00-\uffef\u3000-\u303f]/.test(ch) ? 2 : 1;
+    if (w + cw > perUnit && line) { buf += line + "\n"; line = ""; w = 0; }
+    line += ch; w += cw;
+  }
+  buf += line;
+  ln.append(t, document.createTextNode(buf));
+  const f = $("filter").value.trim().toLowerCase();
+  if (f && !text.toLowerCase().includes(f)) ln.classList.add("hidden");
+  logEl.appendChild(ln);
+  state.lines++;
+  while (logEl.childElementCount > 4000) logEl.firstElementChild.remove();
+  $("counts").textContent = state.lines + " 行";
+  if ($("autoscroll").checked) logEl.scrollTop = logEl.scrollHeight;
+}
+function toast(msg, isErr) {
+  const el = $("toast");
+  el.textContent = msg;
+  el.className = "toast show" + (isErr ? " err" : "");
+  clearTimeout(el._t);
+  el._t = setTimeout(() => (el.className = "toast" + (isErr ? " err" : "")), 2600);
+}
+
+/* ------------------------------------------------------------------ crc32 */
+const CRC_TABLE = (() => {
+  const t = new Uint32Array(256);
+  for (let i = 0; i < 256; i++) {
+    let c = i;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1;
+    t[i] = c >>> 0;
+  }
+  return t;
+})();
+function crc32(u8) {
+  let c = 0xFFFFFFFF;
+  for (let i = 0; i < u8.length; i++) c = CRC_TABLE[(c ^ u8[i]) & 0xFF] ^ (c >>> 8);
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+const hex8 = (n) => "0x" + (n >>> 0).toString(16).padStart(8, "0");
+const u32 = (u8, o) => (u8[o] | (u8[o + 1] << 8) | (u8[o + 2] << 16) | (u8[o + 3] << 24)) >>> 0;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/* -------------------------------------------------------------- connection */
+function setPill(kind, text) {
+  pill.className = "pill" + (kind ? " " + kind : "");
+  pillText.textContent = text;
+}
+async function connect() {
+  if (!("serial" in navigator)) {
+    toast("这个浏览器没有 Web Serial，用 Edge / Chrome", true);
+    return;
+  }
+  if (state.connected) await disconnect();
+  try {
+    const port = await navigator.serial.requestPort();
+    /* Opening the port must not touch DTR/RTS: on the C3 those lines reach
+     * EN/IO0 and a bad combination parks the board in the ROM downloader. */
+    await port.open({ baudRate: 115200, bufferSize: 8192 });
+    state.port = port;
+    state.connected = true;
+    state.writer = port.writable.getWriter();
+    setPill("on", "已连接");
+    $("btnConnect").textContent = "断开";
+    log("串口已打开 115200 8N1", "s");
+    /* 不再自动展开：面板一展开整页会左移，连接瞬间跳一下很难看。
+     * 日志用顶栏「日志」按钮开，或者 URL 加 ?log=1。 */
+    readLoop();
+    setTimeout(() => { send("ROMINFO"); send("AGES"); send("STATE"); }, 500);
+    /* Nothing arriving at all is a different failure from "the command is
+     * unsupported": say so instead of leaving dead-looking buttons. */
+    setTimeout(() => {
+      if (state.rx === 0) {
+        log("连接后 1.8 s 内没收到任何数据：设备可能在 ROM 下载模式，或串口被其它程序占着。", "e");
+        toast("设备没回话：拔插一次 USB 再连", true);
+      }
+    }, 1800);
+  } catch (e) {
+    /* Never keep a half-open "connected" state: connected==true with a null
+     * writer turns every button into a silent no-op. */
+    state.connected = false;
+    state.writer = null;
+    setPill("", "未连接");
+    $("btnConnect").textContent = "连接设备";
+    log("打开串口失败: " + e.message, "e");
+    toast("打开串口失败：" + e.message, true);
+  }
+}
+async function disconnect() {
+  const port = state.port;
+  if (!port) return;
+  /* Order matters: mark the session dead *before* cancelling the reader.
+   * The read loop re-tests state.port every iteration -- with the old order it
+   * cancelled, saw the port still set, grabbed a fresh reader and blocked
+   * again, then port.close() waited forever for that lock and the page froze. */
+  state.connected = false;
+  state.port = null;
+  setPill("", "未连接");
+  $("btnConnect").textContent = "连接设备";
+  try { state.reader && await Promise.race([state.reader.cancel(), sleep(400)]); } catch {}
+  try { state.writer && state.writer.releaseLock(); } catch {}
+  state.reader = state.writer = null;
+  try { await Promise.race([port.close(), sleep(800)]); } catch {}
+  log("串口已关闭", "w");
+}
+async function readLoop() {
+  const dec = new TextDecoder();
+  while (state.port && state.port.readable) {
+    state.reader = state.port.readable.getReader();
+    try {
+      for (;;) {
+        const { value, done } = await state.reader.read();
+        if (done) break;
+        state.buf += dec.decode(value, { stream: true });
+        let nl;
+        while ((nl = state.buf.indexOf("\n")) >= 0) {
+          const line = state.buf.slice(0, nl).replace(/\r$/, "");
+          state.buf = state.buf.slice(nl + 1);
+          onLine(line);
+        }
+      }
+    } catch (e) {
+      if (state.connected) log("读串口中断: " + e.message, "e");
+    } finally {
+      try { state.reader.releaseLock(); } catch {}
+      state.reader = null;
+    }
+  }
+}
+async function sendRaw(text) {
+  if (!state.writer) throw new Error("串口未打开");
+  await state.writer.write(new TextEncoder().encode(text));
+}
+async function send(cmd) {
+  if (!state.connected) { toast("先连设备", true); return false; }
+  log("→ " + cmd, "r");
+  try {
+    await sendRaw(cmd + "\n");
+    return true;
+  } catch (e) {
+    /* A silent write failure is what makes a half-open port look like "按钮没反应":
+     * the bytes never leave, no reply arrives, and nothing visible happens. */
+    log("写串口失败: " + e.message, "e");
+    toast("写串口失败：" + e.message, true);
+    return false;
+  }
+}
+function onLine(line) {
+  if (!line.trim()) return;
+  state.rx++;
+  if (!parseProtocol(line)) log(line, classify(line));
+}
+function classify(line) {
+  if (/✗|fail|BAD|TIMEOUT|error/i.test(line)) return "e";
+  if (/^(SAVE|ROM)(BEGIN|OK|END|DELETED)/.test(line)) return "p";
+  if (/saved|restored|OK|✓/.test(line)) return "s";
+  return "i";
+}
+
+/* ---------------------------------------------------------------- protocol */
+function parseProtocol(line) {
+  let m;
+
+  /* hex payload lines belong to an open transfer, never to a command */
+  if (state.romCollect || state.collecting) {
+    const t = line.trim();
+    if (t && t.length % 2 === 0 && /^[0-9a-fA-F]+$/.test(t)) {
+      const u8 = fromHex(t);
+      if (state.romCollect) state.romCollect.chunks.push(u8);
+      if (state.collecting) state.collecting.chunks.push(u8);
+      return true;
+    }
+  }
+
+  /* ---- ROM partition ---- */
+  if ((m = /^ROMSLOTS (\d+)/.exec(line))) {
+    state.romSlots = [];
+    for (let i = 0; i < parseInt(m[1], 10); i++)
+      state.romSlots.push({ slot: i, valid: false, name: "-", len: 0, crc: 0, active: false });
+    renderRomSlots();
+    return true;
+  }
+  if ((m = /^ROMSLOT (\d+) (\S+) (\d+) ([0-9a-fA-F]{8}) (\S+)/.exec(line))) {
+    const i = parseInt(m[1], 10);
+    state.romSlots[i] = {
+      slot: i, valid: m[2] !== "-", name: m[2] === "-" ? "-" : m[2],
+      len: parseInt(m[3], 10), crc: parseInt(m[4], 16) >>> 0, active: m[5] === "ACTIVE",
+    };
+    renderRomSlots();
+    return true;
+  }
+  if ((m = /^ROMCUR (-?\d+) (\S+)/.exec(line))) {
+    const idx = parseInt(m[1], 10);
+    state.romCur = idx;
+    state.rom = idx >= 0 ? m[2] : null;
+    $("romTag").textContent = idx >= 0 ? "当前 " + m[2] : "NO ROM";
+    $("curTag").textContent = idx >= 0 ? m[2] : "—";
+    renderRomSlots();
+    return true;
+  }
+  if (/^ROMREADY /.test(line)) {
+    if (state.waitRomReady) { state.waitRomReady(); state.waitRomReady = null; }
+    return true;
+  }
+  if ((m = /^ROMOK (\d+) (\d+) ([0-9a-fA-F]{8})/.exec(line))) {
+    log("✓ ROM 写入槽 " + m[1] + " 成功 · crc 0x" + m[3], "s");
+    if (state.waitRomResult) { state.waitRomResult(true); state.waitRomResult = null; }
+    setTimeout(() => { send("ROMINFO"); send("AGES"); }, 250);
+    return true;
+  }
+  if (/^ROMBAD\b/.test(line)) {
+    toast("ROM 写入失败", true);
+    if (state.waitRomResult) { state.waitRomResult(false); state.waitRomResult = null; }
+    return true;
+  }
+  if ((m = /^ROMBEGIN (\d+) (\d+) ([0-9a-fA-F]{8}) (\S+)/.exec(line))) {
+    state.romCollect = { slot: +m[1], len: +m[2], crc: parseInt(m[3], 16) >>> 0, name: m[4], chunks: [] };
+    return true;
+  }
+  if (line === "ROMEND") { if (state.romCollect) finishRomRead(); return true; }
+  if ((m = /^ROMDELETED (\d+)/.exec(line))) {
+    log("槽 " + m[1] + " 已擦除", "s");
+    setTimeout(() => { send("ROMINFO"); send("AGES"); }, 250);
+    return true;
+  }
+
+  /* ---- saves ---- */
+  if ((m = /^SAVEBEGIN (\w+) (\d+)/.exec(line))) {
+    state.collecting = { rom: m[1], size: +m[2], chunks: [] };
+    return true;
+  }
+  if (line === "SAVEEND") { finishExport(); return true; }
+  if ((m = /^SAVEEMPTY (\w+)/.exec(line))) {
+    toast(m[1] + " 没有存档");
+    return true;
+  }
+  if (/^IMPORTREADY /.test(line)) {
+    if (state.waitingReady) { state.waitingReady(); state.waitingReady = null; }
+    return true;
+  }
+  if ((m = /^IMPORTOK (\w+)/.exec(line))) {
+    log("✓ " + m[1] + " 存档写入成功", "s");
+    if (state.waitingResult) { state.waitingResult(true); state.waitingResult = null; }
+    setTimeout(() => send("STATE"), 300);
+    return true;
+  }
+  if (/^IMPORT(BAD|FAIL|TIMEOUT)/.test(line)) {
+    toast("写入失败: " + line, true);
+    if (state.waitingResult) { state.waitingResult(false); state.waitingResult = null; }
+    return true;
+  }
+  if ((m = /^SAVEDEL ok (\d+)/.exec(line))) {
+    log("✓ 槽 " + m[1] + " 的存档已清空", "s");
+    toast("存档已重置");
+    setTimeout(() => { send("AGES"); send("STATE"); }, 300);
+    return true;
+  }
+  if (/^SAVEDELBAD/.test(line)) { toast("槽号不对", true); return true; }
+
+  /* ---- STATE ---- */
+  if (/^STATE /.test(line)) {
+    const kv = {};
+    for (const m2 of line.slice(6).matchAll(/(\w+)=([^\s]+)/g)) kv[m2[1]] = m2[2];
+    state.pet = kv;
+    renderCare();
+    return true;
+  }
+
+  /* ---- AGES ---- */
+  if (/^AGES\b/.test(line)) {
+    for (const m2 of line.matchAll(/(\d+)=(\d+)/g)) {
+      const i = +m2[1];
+      if (i >= 0 && i < ROM_SLOTS) state.ages[i] = +m2[2];
+    }
+    renderRomSlots();
+    return true;
+  }
+
+  /* ---- RAM ---- */
+  if ((m = /^RAM ([0-9A-F]{2}) ([0-9A-F]{16})$/.exec(line))) {
+    const base = parseInt(m[1], 16);
+    for (let j = 0; j < 16; j++) state.ram[base + j] = parseInt(m[2][j], 16);
+    return true;
+  }
+  if (line === "RAMEND") { renderRam(); return true; }
+
+  return false;
+}
+
+/* -------------------------------------------------------------- save blobs */
+function finishExport() {
+  const c = state.collecting;
+  state.collecting = null;
+  if (!c) return;
+  const u8 = new Uint8Array(c.size);
+  let off = 0;
+  for (const ch of c.chunks) { if (off + ch.length > u8.length) break; u8.set(ch, off); off += ch.length; }
+  if (off !== u8.length) { toast("导出不完整", true); return; }
+  const info = blobInfo(u8);
+  if (!info.ok) {
+    log("导出校验失败：" + info.why, "e");
+    toast("导出校验失败：" + info.why, true);
+    return;
+  }
+  /* straight to a file: no browser cache in between */
+  const name = "digimon_" + c.rom + "_" + ts() + ".hex";
+  download(null, name, "text/plain",
+           "SAVEBEGIN " + c.rom + " " + u8.length + "\n" + hexLines(u8) + "SAVEEND\n");
+  log("✓ 已导出 " + c.rom + " 存档：" + u8.length + " B · seq " + info.seq, "s");
+  toast("存档已导出：" + name);
+}
+function blobInfo(u8) {
+  if (u8.length < HDR + 8) return { ok: false, why: "太短" };
+  const magic = u32(u8, 0), size = u32(u8, 8), stateCrc = u32(u8, 12), seq = u32(u8, 16);
+  if (magic !== MAGIC) return { ok: false, why: "magic 不对" };
+  if (u8.length !== HDR + size) return { ok: false, why: "长度不对" };
+  if (crc32(u8.subarray(HDR)) !== stateCrc) return { ok: false, why: "state_crc 不符" };
+  return { ok: true, stateSize: size, stateCrc, seq };
+}
+
+/* ---------------------------------------------------------------- ROM flow */
+function romSlotList() {
+  if (state.romSlots.length) return state.romSlots;
+  return Array.from({ length: ROM_SLOTS }, (_, i) =>
+    ({ slot: i, valid: false, name: "-", len: 0, crc: 0, active: false }));
+}
+function romUpload(slot, bytes, name) {
+  if (!state.connected) { toast("先连设备", true); return Promise.resolve(); }
+  const crcHex = crc32(bytes).toString(16).padStart(8, "0");
+  state.romBusy = true; renderRomSlots();
+  return (async () => {
+    try {
+      log("上传 " + bytes.length + " B → 槽 " + slot + "（" + name + "）", "r");
+      const ready = new Promise((res) => (state.waitRomReady = res));
+      await send("ROMIN " + slot + " " + bytes.length + " " + crcHex + " " + name);
+      const ok = await Promise.race([ready.then(() => true), sleep(ROM_READY_TIMEOUT_MS).then(() => false)]);
+      if (!ok) { toast("没等到 ROMREADY", true); return; }
+      const result = new Promise((res) => (state.waitRomResult = res));
+      let chunk = "";
+      for (let i = 0; i < bytes.length; i += LINE_BYTES) {
+        chunk += toHex(bytes.subarray(i, Math.min(i + LINE_BYTES, bytes.length))) + "\n";
+        if (chunk.length >= 512) { await sendRaw(chunk); chunk = ""; }
+      }
+      if (chunk) await sendRaw(chunk);
+      await send("ROMEND");
+      const done = await Promise.race([result, sleep(ROM_RESULT_TIMEOUT_MS).then(() => null)]);
+      if (done === null) toast("等 ROMOK 超时", true);
+    } finally {
+      state.romBusy = false; renderRomSlots();
+    }
+  })();
+}
+function finishRomRead() {
+  const c = state.romCollect;
+  state.romCollect = null;
+  if (!c) return;
+  const u8 = new Uint8Array(c.len);
+  let off = 0;
+  for (const ch of c.chunks) { if (off + ch.length > u8.length) break; u8.set(ch, off); off += ch.length; }
+  if (off !== u8.length) { toast("ROM 读出长度不对", true); return; }
+  if (crc32(u8) !== c.crc) { toast("ROM CRC 不符", true); return; }
+  download(u8, "digimon_" + c.name + "_" + ts() + ".bin");
+  log("✓ 槽 " + c.slot + " 读出 " + u8.length + " B，已存成 .bin", "s");
+}
+
+/* ------------------------------------------------------------- save flow */
+/* 把一段存档字节直接写进设备：SAVEIN → 等 IMPORTREADY → SAVEBEGIN/hex/SAVEEND。
+ * 不经过任何缓存层，调用方自己决定 bytes 从哪来（目前只有「从文件导入」）。 */
+async function writeSaveBytes(bytes, name) {
+  if (!state.connected) { toast("先连设备", true); return; }
+  if (state.saveBusy) { toast("上一次写入还没结束", true); return; }
+  if (!bytes || !bytes.length) { toast("没有可写入的数据", true); return; }
+
+  state.saveBusy = true;
+  const total = Math.ceil(bytes.length / LINE_BYTES);
+  try {
+    const ready = new Promise((res) => (state.waitingReady = res));
+    await send("SAVEIN");
+    const ok = await Promise.race([ready.then(() => true), sleep(READY_TIMEOUT_MS).then(() => false)]);
+    if (!ok) {
+      log("没等到 IMPORTREADY：设备没进导入模式（串口被别的页面抢了？）", "e");
+      toast("没等到 IMPORTREADY", true);
+      return;
+    }
+
+    const result = new Promise((res) => (state.waitingResult = res));
+    log("→ SAVEBEGIN " + name + " " + bytes.length + " B（" + total + " 行 hex）", "r");
+    await sendRaw("SAVEBEGIN " + name + " " + bytes.length + "\n");
+    for (let i = 0, n = 1; i < bytes.length; i += LINE_BYTES, n++) {
+      await sendRaw(toHex(bytes.subarray(i, Math.min(i + LINE_BYTES, bytes.length))) + "\n");
+      if (n % 10 === 0 || n === total) log("  … " + n + "/" + total + " 行", "r");
+    }
+    log("→ SAVEEND（等设备校验 CRC）", "r");
+    await sendRaw("SAVEEND\n");
+
+    const done = await Promise.race([result, sleep(RESULT_TIMEOUT_MS).then(() => null)]);
+    if (done === null) {
+      log("等 IMPORTOK 超时：设备可能拒了这份档，或 flash 还没写完", "e");
+      toast("等 IMPORTOK 超时", true);
+    }
+  } catch (e) {
+    log("写入存档失败：" + e.message, "e");
+    toast("写入存档失败：" + e.message, true);
+  } finally {
+    state.saveBusy = false;
+  }
+}
+
+/* ------------------------------------------------------------------ render */
+function fmtPlay(sec) {
+  sec = Math.max(0, Math.round(sec || 0));
+  const h = Math.floor(sec / 3600), mn = Math.floor((sec % 3600) / 60), s = sec % 60;
+  if (h >= 100) return h + "H+";
+  if (h) return h + "H" + String(mn).padStart(2, "0") + "M";
+  if (mn) return mn + "M" + String(s).padStart(2, "0") + "S";
+  return s + "S";
+}
+function mkBtn(label, fn, disabled, cls) {
+  const b = document.createElement("button");
+  b.className = "btn sm" + (cls ? " " + cls : "");
+  b.textContent = label; b.disabled = !!disabled; b.onclick = fn;
+  return b;
+}
+function renderRomSlots() {
+  const host = $("romSlots"); if (!host) return;
+  host.innerHTML = "";
+  for (const r of romSlotList()) {
+    const el = document.createElement("div");
+    el.className = "slot" + (r.active ? " cur" : "") + (r.valid ? "" : " empty");
+    el.innerHTML =
+      '<div class="no">SLOT ' + r.slot + '</div>' +
+      '<div class="nm">' + (r.valid ? r.name : "空槽") + (r.active ? "<em>运行中</em>" : "") + '</div>' +
+      '<div class="meta">' + (r.valid ? r.len + " B · " + hex8(r.crc) : "NO ROM") + '</div>' +
+      '<div class="meta">PLAY <b class="play">' + fmtPlay(state.ages[r.slot]) + '</b></div>';
+    const acts = document.createElement("div"); acts.className = "acts";
+    acts.append(
+      mkBtn("上传", () => pickRom(r.slot), state.romBusy),
+      mkBtn("读出", () => { if (state.connected) send("ROMOUT " + r.slot); }, !r.valid || state.romBusy),
+      mkBtn("启动", () => { if (state.connected) send("ROMBOOT " + r.slot); }, !r.valid || r.active || state.romBusy),
+      mkBtn("擦除", () => {
+        if (confirm("擦除槽 " + r.slot + "？" + (r.active ? "\n它是当前槽，屏幕会变成 NO ROM。" : "")))
+          send("ROMDEL " + r.slot);
+      }, !r.valid || state.romBusy, "danger"),
+    );
+    el.appendChild(acts);
+    host.appendChild(el);
+  }
+}
+function download(u8, filename, type, text) {
+  const blob = text != null ? new Blob([text], { type: type || "text/plain" })
+                            : new Blob([u8], { type: type || "application/octet-stream" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = filename; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+function hexLines(u8) {
+  let out = "";
+  for (let i = 0; i < u8.length; i += LINE_BYTES)
+    out += toHex(u8.subarray(i, Math.min(i + LINE_BYTES, u8.length))) + "\n";
+  return out;
+}
+function ts() {
+  const d = new Date(), p = (n) => String(n).padStart(2, "0");
+  return d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + "-" + p(d.getHours()) + p(d.getMinutes());
+}
+
+/* --------------------------------------------------------------- care page */
+function speciesOf(slot) {
+  return SPECIES.find((x) => x.slot === slot) || { slot, en: "Slot " + slot, zh: "未知" };
+}
+function petNum(key) {
+  const p = state.pet; if (!p || p[key] == null) return null;
+  const n = Number(p[key]);
+  return Number.isFinite(n) ? n : null;
+}
+function renderCare() {
+  const p = state.pet;
+  if (!p) {
+    $("careName").textContent = "—";
+    $("careNameEn").textContent = "连上设备后按「刷新 STATE」";
+    $("careStats").innerHTML = '<div class="hint">还没有数据。</div>';
+    $("evoList").innerHTML = '<div class="hint">读不到 STATE 就没法算进化。</div>';
+    renderTree(-1);          /* 全进化表不依赖设备，先把结构画出来 */
+    return;
+  }
+  const slot = parseInt(p.slot, 16);
+  const sp = speciesOf(slot);
+  $("careName").textContent = sp.zh;
+  $("careNameEn").textContent = sp.en + " · slot 0x" + String(p.slot).toUpperCase();
+  $("carePlay").textContent = fmtPlay(petNum("age") || 0);
+
+  const left = petNum("left");
+  const parts = String(p.stage || "0:0").split(":");
+  const stageMin = (+parts[0] || 0) * 60 + (+parts[1] || 0);
+  const total = left >= 0 ? stageMin + left : 0;
+  $("careEvoHint").textContent = left != null && left >= 0
+    ? "距下次进化 " + left + " 分钟（目标 " + (p.next || "—") + "）"
+    : "这个形态没有下一次进化了";
+  const pct = total > 0 ? Math.min(100, Math.round((stageMin / total) * 100)) : 0;
+  const bar = $("careEvoBar");
+  bar.querySelector("i").style.width = pct + "%";
+  bar.classList.toggle("warn", left != null && left >= 0 && left < 60);
+
+  renderStats();
+  renderEvo(slot);
+}
+
+/* 攻略本口径：说明书那六张分解图只讲路线，真机状态页给玩家看的也只有体重和
+ * 年龄；判定进化靠 失误 / 训练 / 过量 / 睡眠 这四项。其余内部计数器默认折叠，
+ * 一屏 6 项 —— 15 项一次性铺开没人看。 */
+function renderStats() {
+  const v = (k) => { const n = petNum(k); return n == null ? "—" : n; };
+  const card = ([en, zh, val, max]) => {
+    const n = typeof val === "number" ? val : null;
+    const pct = n == null || !max ? 0 : Math.max(0, Math.min(100, (n / max) * 100));
+    return '<div class="stat"><div class="k">' + en + "<b>" + zh + "</b></div>" +
+      '<div class="v">' + val + (max ? "<small>/ " + max + "</small>" : "") + "</div>" +
+      (max ? '<div class="bar"><i style="width:' + pct + '%"></i></div>' : "") + "</div>";
+  };
+  const main = [
+    ["Weight", "体重", v("weight"), 99],
+    ["Age", "养育时长", state.pet ? fmtPlay(petNum("age") || 0) : "—", 0],
+    ["Care Mistakes", "照顾失误", v("care"), 15],
+    ["Training", "训练次数", v("train"), 63],
+    ["Overfeed", "过量喂食", v("over"), 6],
+    ["Sleep Disturb", "睡眠打断", v("sleep"), 12],
+  ];
+  const rest = [
+    ["Hunger", "饱食度", v("hunger"), 4],
+    ["Strength", "体力", v("strength"), 4],
+    ["Base Weight", "基准体重", v("basew"), 99],
+    ["Protein", "蛋白质", v("protein"), 15],
+    ["Overdoses", "用药过量", v("doses"), 15],
+    ["Poop", "便便", v("poop"), 8],
+    ["Injuries", "受伤次数", v("injc"), 20],
+    ["Injury Hours", "受伤时长", v("injh"), 6],
+    ["Battles", "对战次数", v("bouts"), 15],
+    ["Win Score", "胜点", v("win"), 15],
+    ["Energy", "能量", v("energy"), 99],
+  ];
+  $("careStats").innerHTML =
+    '<div class="statgrid">' + main.map(card).join("") + "</div>" +
+    '<details class="rest"><summary>其它数据（' + rest.length + " 项，默认隐藏）</summary>" +
+    '<div class="statgrid">' + rest.map(card).join("") + "</div></details>";
+}
+
+function ruleHit(rule, care, train, over, sleepv) {
+  return care >= rule.care[0] && care <= rule.care[1] &&
+         train >= rule.train[0] && train <= rule.train[1] &&
+         over >= rule.over[0] && over <= rule.over[1] &&
+         sleepv >= rule.sleep[0] && sleepv <= rule.sleep[1];
+}
+
+/* ---- 进化树（配图版）-------------------------------------------------
+ * 版式照抄说明书《V-Pet Version 1-5》的 Ver.1 分解图：四个成长阶段各一栏，
+ * 每只数码兽一张彩色卡片，阶段之间用彩线相连。这里只画当前这只的三栏
+ * （现在 → 下一步 → 再下一步）：命中的分支用橙线点亮，其余压暗但保留，
+ * 因为「不会进化成它」本身也是信息。 */
+let g_evoLinks = [];
+
+function stageColor(slot) {
+  if (slot <= 2) return "#b23a2e";       /* 幼年期 红 */
+  if (slot <= 4) return "#c99a0a";       /* 成长期 黄 */
+  if (slot <= 11) return "#3f8f24";      /* 成熟期 绿 */
+  return "#1f8fa6";                      /* 完全体 青 */
+}
+
+function evoCard(slot, col, cls, note) {
+  const sp = speciesOf(slot);
+  const src = EVO_ART[slot] || "";
+  return '<div class="evocard ' + (cls || "") + '" data-key="' + slot + "@" + col +
+    '" data-slot="' + slot + '" data-col="' + col + '" style="--card:' + stageColor(slot) + '">' +
+    (src ? '<img alt="" src="' + src + '">' : "") +
+    '<div style="min-width:0"><div class="nm">' + sp.zh + "</div>" +
+    '<div class="en">' + sp.en + "</div>" +
+    (note ? '<div class="cond">' + note + "</div>" : "") +
+    "</div></div>";
+}
+
+/* 连线按布局实测坐标画，所以必须在插入 DOM 之后的下一帧跑；窗口宽度变了要重画。 */
+function drawEvoLinks() {
+  const wrap = $("evoFlow");
+  if (!wrap) return;
+  const svg = wrap.querySelector("svg.links");
+  if (!svg) return;
+  const box = wrap.getBoundingClientRect();
+  if (!box.width) return;
+  /* viewBox 用实测尺寸，svg 本身靠 CSS 100% 撑满；preserveAspectRatio=none 让
+   * 像素坐标和实际像素 1:1（两侧尺寸相同，不会有缩放）。不要再写 width/height
+   * 属性——那会改变布局，配合 ResizeObserver 会自激成死循环（踩过）。 */
+  svg.setAttribute("viewBox", "0 0 " + box.width + " " + box.height);
+  svg.setAttribute("preserveAspectRatio", "none");
+  while (svg.firstChild) svg.removeChild(svg.firstChild);
+  const NS = "http://www.w3.org/2000/svg";
+
+  /* 同一个源卡片出去的线要错开起点，否则 5 条线从一个点散开就是一把黑扇子 */
+  const groups = new Map();
+  for (const L of g_evoLinks) {
+    if (!groups.has(L.from)) groups.set(L.from, []);
+    groups.get(L.from).push(L);
+  }
+  for (const [, list] of groups) {
+    const a = wrap.querySelector('.evocard[data-key="' + list[0].from + '"]');
+    if (!a) continue;
+    const ra = a.getBoundingClientRect();
+    const x1 = ra.right - box.left + 6;
+    const cy = ra.top - box.top + ra.height / 2;
+    const n = list.length;
+    list.forEach((L, i) => {
+      const b = wrap.querySelector('.evocard[data-key="' + L.to + '"]');
+      if (!b) return;          /* forEach 里 continue 是语法错误，整段脚本会挂 */
+      const rb = b.getBoundingClientRect();
+      const x2 = rb.left - box.left - 4, y2 = rb.top - box.top + rb.height / 2;
+      const y1 = cy + (n > 1 ? (i - (n - 1) / 2) * 11 : 0);
+      const dx = Math.max(26, (x2 - x1) * 0.55);
+      const p = document.createElementNS(NS, "path");
+      p.setAttribute("d", "M" + x1 + "," + y1 + " C" + (x1 + dx) + "," + y1 + " " +
+                     (x2 - dx) + "," + y2 + " " + x2 + "," + y2);
+      p.setAttribute("fill", "none");
+      p.setAttribute("stroke-linecap", "round");
+      p.setAttribute("vector-effect", "non-scaling-stroke");
+      p.setAttribute("stroke", L.hit ? "#c9541f" : "rgba(30,36,24,.22)");
+      p.setAttribute("stroke-width", L.hit ? 3 : 1.2);
+      if (!L.hit) p.setAttribute("stroke-dasharray", "4 4");
+      svg.appendChild(p);
+    });
+  }
+  /* 只盯这条流程自己的尺寸，而且尺寸没变就不重画：盯 body + 无条件重画会
+   * 自我触发，把主线程锁死，页面看起来"卡在别的标签页"。 */
+  if (window.ResizeObserver && !drawEvoLinks._ro) {
+    drawEvoLinks._ro = new ResizeObserver((entries) => {
+      const r = entries[0].contentRect;
+      const w = Math.round(r.width), h = Math.round(r.height);
+      if (w === drawEvoLinks._w && h === drawEvoLinks._h) return;
+      drawEvoLinks._w = w; drawEvoLinks._h = h;
+      drawEvoLinks();
+    });
+    drawEvoLinks._ro.observe(wrap);
+  }
+}
+
+window.addEventListener("resize", () => { if ($("evoFlow")) drawEvoLinks(); });
+
+function renderEvo(slot) {
+  const host = $("evoList");
+  g_evoLinks = [];
+  const care = petNum("care") || 0, train = petNum("train") || 0;
+  const over = petNum("over") || 0, sleepv = petNum("sleep") || 0;
+  const has = !!state.pet && slot >= 0;
+  const rules = has ? EVO_RULES.filter((r) => r.from === slot) : [];
+
+  if (!has) {
+    host.innerHTML = '<div class="hint">连上设备、点「刷新 STATE」后，这里会画出当前这只的三栏路线。</div>';
+    renderTree(-1);
+    return;
+  }
+
+  let html = '<div class="evoflow" id="evoFlow"><svg class="links"></svg><div class="lane">';
+
+  html += '<div class="column"><div class="colhead">现在 · now</div>' +
+          evoCard(slot, 0, "cur", "") + "</div>";
+
+  html += '<div class="column"><div class="colhead">下一步 · next</div>';
+  if (!rules.length) {
+    html += '<div class="hint" style="margin:0">这个形态没有养育分支。</div>';
+  } else {
+    for (const r of rules) {
+      const hit = ruleHit(r, care, train, over, sleepv);
+      const cond = "失误" + r.care[0] + "–" + r.care[1] +
+                   " 训练" + r.train[0] + "–" + r.train[1] +
+                   " 过量" + r.over[0] + "–" + r.over[1] +
+                   " 睡眠" + r.sleep[0] + "–" + r.sleep[1];
+      html += evoCard(r.to, 1, hit ? "hit" : "dim", cond);
+      g_evoLinks.push({ from: slot + "@0", to: r.to + "@1", hit: hit });
+    }
+  }
+  html += "</div>";
+
+  const kids = [...new Set(rules.flatMap((r) => r.to))];
+  const branch = [...new Set(kids.flatMap((k) => EVO_RULES.filter((x) => x.from === k).map((x) => x.to)))];
+  html += '<div class="column"><div class="colhead">' +
+          (branch.length ? "再下一步 · after" : "完全体 · ultimate") + "</div>";
+  if (branch.length) {
+    for (const b of branch) {
+      html += evoCard(b, 2, "dim", "");
+      for (const k of kids) {
+        if (EVO_RULES.some((x) => x.from === k && x.to === b))
+          g_evoLinks.push({ from: k + "@1", to: b + "@2", hit: false });
+      }
+    }
+  } else if (kids.length) {
+    /* 完全体不是养育分支：15 场对战 + 掷骰。连线画出来只会糊成一团，
+     * 所以这里只摆卡片，用一句话说明条件。 */
+    html += '<div class="hint" style="margin:0 0 2px">涨到成熟期后才有资格：15 场对战 + 掷骰</div>';
+    for (const p of [12, 13, 14]) html += evoCard(p, 2, "dim", "");
+  }
+  html += "</div></div></div>";
+
+  const hits = rules.filter((r) => ruleHit(r, care, train, over, sleepv));
+  const dataStr = "失误 " + care + " / 训练 " + train + " / 过量 " + over + " / 睡眠 " + sleepv;
+  const sum = !rules.length
+    ? "这个形态的下一站不是养育分支（蛋看完孵化、完全体靠 15 场对战掷骰）。"
+    : (hits.length
+        ? "按当前数据（" + dataStr + "）→ <b>" + hits.map((r) => speciesOf(r.to).zh).join(" / ") + "</b>"
+        : "当前数据（" + dataStr + "）不落在任何一条区间里，会走 ROM 的兜底分支。");
+  host.innerHTML = '<div class="sumline">' + sum + "</div>" + html;
+  requestAnimationFrame(drawEvoLinks);
+  renderTree(slot);
+}
+
+/* 全进化表：同一套卡片语言，纯网格、不带连线（静态参考用）。 */
+function renderTree(curSlot) {
+  const host = $("tree");
+  const groups = [
+    ["幼年期 Baby", [1, 2]],
+    ["成长期 Child", [3, 4]],
+    ["成熟期 Adult", [5, 6, 7, 8, 9, 10, 11]],
+    ["完全体 Perfect", [12, 13, 14]],
+  ];
+  let html = "";
+  for (const [title, list] of groups) {
+    html += '<div class="treehead">' + title + "</div>";
+    for (const s of list) {
+      const sp = speciesOf(s);
+      html += '<div class="tnode' + (s === curSlot ? " cur" : "") + '" style="--card:' + stageColor(s) + '">' +
+        (EVO_ART[s] ? '<img alt="" src="' + EVO_ART[s] + '">' : "") +
+        "<div><b>" + sp.zh + "</b><span>" + sp.en + " · slot " + s + "</span></div></div>";
+    }
+  }
+  host.innerHTML = html;
+}
+
+/* -------------------------------------------------------------- debug page */
+function renderRam() {
+  const t = $("ramTable");
+  if (!t) return;
+  let html = "<thead><tr><th></th>";
+  for (let c = 0; c < 16; c++) html += "<th>" + c.toString(16).toUpperCase() + "</th>";
+  html += "</tr></thead><tbody>";
+  for (let r = 0; r < 16; r++) {
+    html += "<tr><td class='addr'>" + (r * 16).toString(16).toUpperCase().padStart(2, "0") + "</td>";
+    for (let c = 0; c < 16; c++) {
+      const a = r * 16 + c, v = state.ram[a];
+      const cls = v < 0 ? "z" : (v === 0 ? "" : "hot");
+      html += "<td class='" + cls + (a === state.ramAt ? " sel" : "") + "' data-a='" + a + "'>" +
+        (v < 0 ? "·" : v.toString(16).toUpperCase()) + "</td>";
+    }
+    html += "</tr>";
+  }
+  t.innerHTML = html + "</tbody>";
+  t.querySelectorAll("td[data-a]").forEach((td) => {
+    td.onclick = () => { state.ramAt = +td.dataset.a; renderRam(); };
+  });
+  const known = state.ram.filter((v) => v >= 0).length;
+  $("ramInfo").textContent = state.ramAt != null
+    ? "0x" + state.ramAt.toString(16).toUpperCase().padStart(2, "0") + " = " +
+      state.ram[state.ramAt].toString(16).toUpperCase() + " (" + state.ram[state.ramAt] + ")" +
+      "  ·  已读 " + known + "/256"
+    : "已读 " + known + "/256 · 点格子看地址";
+}
+
+/* ------------------------------------------------------------------ events */
+$("btnConnect").onclick = () => (state.connected ? disconnect() : connect());
+$("btnHelp").onclick = () => $("helpDlg").showModal();
+$("btnHelpClose").onclick = () => $("helpDlg").close();
+$("btnRomRefresh").onclick = () => { send("ROMINFO"); send("AGES"); };
+$("btnExportFile").onclick = () => {
+  if (!state.connected) { toast("先连设备", true); return; }
+  if (!state.rom) { toast("设备还没加载 ROM", true); return; }
+  send("SAVEOUT");
+};
+$("btnImportFile").onclick = () => importSaveFile();
+$("btnSaveDel").onclick = () => {
+  if (!state.connected) { toast("先连设备", true); return; }
+  if (!state.rom) { toast("设备还没加载 ROM", true); return; }
+  if (!confirm("重置 " + state.rom + " 的存档？\n宠物会回到蛋，PLAY TIME 归零。")) return;
+  if (!confirm("再确认一次：不可撤销。\n\n槽 " + state.romCur + " · " + state.rom)) return;
+  send("SAVEDEL " + state.romCur);
+};
+$("btnState").onclick = () => send("STATE");
+$("btnAges").onclick = () => send("AGES");
+document.querySelectorAll("[data-skip]").forEach((b) => {
+  b.onclick = async () => {
+    if (!state.connected) { toast("先连设备", true); return; }
+    /* only claim success once the bytes actually went out */
+    if (await send("SKIP " + b.dataset.skip)) toast("跳过 " + b.dataset.skip + " 分钟游戏时间…");
+  };
+});
+$("btnRam").onclick = () => send("RAM");
+$("btnSelfTest").onclick = async () => {
+  if (!state.connected) { toast("先连设备", true); return; }
+  const out = $("selfTestOut");
+  out.textContent = "";
+  for (const c of ["ROMINFO", "STATE", "AGES", "RAM", "DUMP", "PET"]) {
+    const before = state.rx;
+    await send(c);
+    await sleep(c === "RAM" ? 1200 : 700);
+    const got = state.rx - before;
+    out.textContent += c.padEnd(9) + (got ? "OK   " + got + " 行" : "NO REPLY") + "\n";
+  }
+  out.textContent += "\n连接 " + (state.connected ? "是" : "否") +
+    " · 当前 ROM " + (state.rom || "-") +
+    " · 存档直连（无缓存）";
+};
+$("btnDump").onclick = () => send("DUMP");
+$("btnPetDbg").onclick = () => send("PET");
+$("btnSend").onclick = () => {
+  const v = $("cmdInput").value.trim();
+  if (!v) return;
+  send(v); $("cmdInput").value = "";
+};
+$("cmdInput").onkeydown = (e) => { if (e.key === "Enter") $("btnSend").click(); };
+$("btnCrc").onclick = () => {
+  const raw = $("crcInput").value.trim();
+  if (!raw) return;
+  const u8 = /^[0-9a-fA-F\s]+$/.test(raw) ? fromHex(raw) : new TextEncoder().encode(raw);
+  $("crcOut").textContent = hex8(crc32(u8)) + "  ·  " + u8.length + " B";
+};
+$("btnClear").onclick = () => { logEl.innerHTML = ""; state.lines = 0; $("counts").textContent = "0 行"; };
+$("btnSaveLog").onclick = () => {
+  const text = [...logEl.querySelectorAll(".ln")].map((ln) => ln.textContent).join("\n");
+  download(null, "digimon_log_" + ts() + ".txt", "text/plain", text);
+};
+function setLogOpen(on) {
+  $("logbar").classList.toggle("open", on);
+  document.body.classList.toggle("log-open", on);
+  $("btnToggleLog").classList.toggle("active", on);
+}
+$("btnToggleLog").onclick = () => setLogOpen(!document.body.classList.contains("log-open"));
+$("btnCloseLog").onclick = () => setLogOpen(false);
+$("filter").oninput = () => {
+  const f = $("filter").value.trim().toLowerCase();
+  for (const ln of logEl.querySelectorAll(".ln"))
+    ln.classList.toggle("hidden", !!f && !ln.textContent.toLowerCase().includes(f));
+};
+document.querySelectorAll(".tab").forEach((tab) => {
+  tab.onclick = () => {
+    document.querySelectorAll(".tab").forEach((t) => t.setAttribute("aria-selected", String(t === tab)));
+    document.querySelectorAll(".page").forEach((p) => p.classList.toggle("active", p.id === "page-" + tab.dataset.tab));
+    if (tab.dataset.tab === "debug") renderRam();
+  };
+});
+
+function pickRom(slot) {
+  const inp = $("romFile");
+  inp.value = "";
+  inp.onchange = async () => {
+    const files = [...inp.files].filter((f) => f && f.size > 0);
+    if (!files.length) return;
+    let targets;
+    if (files.length === 1) targets = [slot];
+    else {
+      const list = romSlotList(), free = [];
+      for (let i = 0; i < ROM_SLOTS; i++) {
+        const s = (slot + i) % ROM_SLOTS;
+        if (!list[s] || !list[s].valid) free.push(s);
+      }
+      targets = files.map((_, i) => (i < free.length ? free[i] : (slot + i) % ROM_SLOTS));
+    }
+    for (let i = 0; i < files.length; i++) {
+      const f = files[i];
+      const bytes = new Uint8Array(await f.arrayBuffer());
+      if (!bytes.length || bytes.length > ROM_MAX) {
+        toast(f.name + " 不是 16 KB 镜像，跳过", true);
+        continue;
+      }
+      const name = f.name.replace(/\.[^.]+$/, "").replace(/[^\x20-\x7e]/g, "").slice(0, 11) || ("S" + targets[i]);
+      await romUpload(targets[i], bytes, name);
+    }
+  };
+  inp.click();
+}
+/* 「从文件导入」：选 .hex / .bin → 校验 → 直接写进设备。
+ * 没有中间缓存：选完这一下就是最终结果，取消就在确认框里取消。 */
+function importSaveFile() {
+  if (!state.connected) { toast("先连设备", true); return; }
+  if (!state.rom) { toast("设备还没加载 ROM", true); return; }
+  const inp = $("fileInput");
+  inp.value = "";
+  inp.onchange = async () => {
+    const f = inp.files[0];
+    if (!f) return;
+    const buf = new Uint8Array(await f.arrayBuffer());
+    const u8 = looksLikeSaveText(buf) ? parseSaveText(new TextDecoder().decode(buf)) : buf;
+    if (!u8 || !u8.length) { toast("文件解析不出存档", true); return; }
+    const info = blobInfo(u8);
+    if (!info.ok) {
+      log("导入文件校验失败：" + info.why + "（" + u8.length + " B，前16字节 " +
+          toHex(u8.subarray(0, 16)) + "）", "e");
+      toast("文件校验失败：" + info.why, true);
+      return;
+    }
+    log("文件校验通过：" + f.name + " · " + u8.length + " B · seq " + info.seq, "s");
+    if (!confirm("写入设备？\n会覆盖 " + state.rom + " 里当前这只，不可撤销。")) return;
+    writeSaveBytes(u8, state.rom);
+  };
+  inp.click();
+}
+
+/* .hex 备份以 "SAVEBEGIN" 开头，纯 hex 备份则整篇是十六进制 —— 两种都要认。
+ * 旧判定只看前 64 字节是不是"纯 hex"，于是带信封的 .hex 被当成二进制，
+ * blobInfo() 一读前 4 字节就报 "magic 不对"。 */
+function looksLikeSaveText(buf) {
+  const head = new TextDecoder().decode(buf.subarray(0, Math.min(256, buf.length)));
+  if (/^\s*SAVEBEGIN/mi.test(head)) return true;
+  return /^[0-9a-fA-F\s]+$/.test(head);
+}
+
+function parseSaveText(text) {
+  const lines = text.split(/\r?\n/), chunks = [];
+  const hasMarker = /^\s*SAVEBEGIN/im.test(text);
+  let started = !hasMarker;
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) continue;
+    if (/^SAVEBEGIN/i.test(line)) { started = true; continue; }
+    if (/^SAVEEND/i.test(line)) break;
+    if (started && /^[0-9a-fA-F]+$/.test(line) && line.length % 2 === 0) chunks.push(fromHex(line));
+  }
+  if (!chunks.length) return null;
+  const total = chunks.reduce((n, c) => n + c.length, 0);
+  const u8 = new Uint8Array(total);
+  let off = 0;
+  for (const c of chunks) { u8.set(c, off); off += c.length; }
+  return u8;
+}
+
+/* ---------------------------------------------------------------- helpers */
+function toHex(u8) {
+  let s = "";
+  for (let i = 0; i < u8.length; i++) s += u8[i].toString(16).padStart(2, "0");
+  return s;
+}
+function fromHex(str) {
+  const s = str.replace(/[^0-9a-fA-F]/g, "");
+  const u8 = new Uint8Array(s.length >> 1);
+  for (let i = 0; i < u8.length; i++) u8[i] = parseInt(s.substr(i * 2, 2), 16);
+  return u8;
+}
+
+/* ------------------------------------------------------------------- boot */
+navigator.serial?.addEventListener("disconnect", () => {
+  state.connected = false;
+  setPill("err", "已断开");
+  $("btnConnect").textContent = "连接设备";
+  log("设备被拔掉了", "w");
+});
+window.addEventListener("beforeunload", () => { try { state.port && state.port.close(); } catch {} });
+
+renderRomSlots(); renderCare(); renderRam();
+
+if (!("serial" in navigator)) {
+  setPill("err", "不支持 Web Serial");
+  $("btnConnect").disabled = true;
+  log("这个浏览器没有 Web Serial，用 Edge / Chrome 打开本文件。", "e");
+}
+log("Digimon Studio v3 · " + CMD, "s");
+
+/* ?log=1 — open the console rail on load (handy for screenshots) */
+if (/[?&]log=1/.test(location.search)) setLogOpen(true);
+
+/* ?tab=rom|care|debug — jump straight to a page (handy for screenshots) */
+const tabParam = new URLSearchParams(location.search).get("tab");
+if (tabParam) {
+  const t = document.querySelector('.tab[data-tab="' + tabParam + '"]');
+  if (t) t.click();
+}
+
+/* ?demo=1 — 没设备时看排版 */
+if (/[?&]demo=1/.test(location.search)) {
+  state.rom = "V1"; state.romCur = 0;
+  state.romSlots = [0, 1, 2, 3, 4, 5, 6, 7].map((i) => ({
+    slot: i, valid: i < 3, name: ["V1", "V2", "V3", "-", "-", "-", "-", "-"][i],
+    len: i < 3 ? 16384 : 0, crc: 0x08ffac1b + i, active: i === 0,
+  }));
+  state.ages = [378000, 45200, 1200, 0, 0, 0, 0, 0];
+  state.pet = {
+    slot: "3", mode: "0", sub: "0", care: "1", train: "3", over: "0", sleep: "0",
+    hunger: "3", strength: "2", weight: "22", basew: "20", protein: "1", doses: "0", poop: "1",
+    injured: "0", injc: "0", injh: "0", win: "4", bouts: "6", energy: "12",
+    stage: "18:42", next: "78:13", left: "3571", age: "105995",
+  };
+  for (let i = 0; i < 256; i++) state.ram[i] = (i * 7 + (i >> 3)) & 0xF;
+  renderRomSlots(); renderCare(); renderRam();
+  log("示例数据已载入（?demo=1）", "s");
+}
+})();
+</script>
+</body>
+</html>
