@@ -1,6 +1,6 @@
 # Digital Monster on AI Passport
 
-把 Bandai《Digital Monster》（数码暴龙机，1997）的**原版 V1 固件**跑在
+把 Bandai《Digital Monster》（数码暴龙机，1997）的**原版 V1 V2 V3 固件**跑在
 **FoloToy AI Passport**（ESP32-C3，240×320 屏，三个按键）上。
 
 不是复刻玩法，是把原机的 4-bit MCU 完整模拟出来：CPU、定时器、中断、按键扫描、
