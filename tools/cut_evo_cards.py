@@ -89,22 +89,26 @@ def main():
     ap.add_argument("--size", type=int, default=56)
     ap.add_argument("--colors", type=int, default=48)
     ap.add_argument("--list", action="store_true", help="只打印检测到的框，不写文件")
+    ap.add_argument("--drop", default="", help="逗号分隔的误检框编号，保留原编号但不写出")
     args = ap.parse_args()
 
+    drop = {int(x) for x in args.drop.split(",") if x.strip()}
     img = Image.open(args.src)
     boxes = find_boxes(img)
     print("%s: %d boxes" % (args.src, len(boxes)))
     for i, (x, y, bw, bh) in enumerate(boxes):
-        print("  #%02d  x=%d y=%d w=%d h=%d" % (i, x, y, bw, bh))
+        print("  #%02d  x=%d y=%d w=%d h=%d%s" % (i, x, y, bw, bh, "  [drop]" if i in drop else ""))
     if args.list:
         return 0
-    if len(boxes) != 14:
-        print("!! 期望 14 个框，实际 %d 个 —— 先在 --list 下核对坐标" % len(boxes), file=sys.stderr)
+    if len(boxes) - len(drop) != 14:
+        print("!! 期望 14 个框，实际 %d 个 —— 先在 --list 下核对坐标" % (len(boxes) - len(drop)), file=sys.stderr)
         return 1
 
     os.makedirs(args.out, exist_ok=True)
     print("\n/* slot 顺序需按图上的位置人工对应，写进 HTML 前核对一遍 */")
     for i, (x, y, bw, bh) in enumerate(boxes):
+        if i in drop:
+            continue
         box = img.crop((x, y, x + bw, y + bh))
         side = min(box.size)
         l = (box.width - side) // 2

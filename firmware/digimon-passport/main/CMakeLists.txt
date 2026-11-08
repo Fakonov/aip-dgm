@@ -1,9 +1,11 @@
 # The ROMs are NOT embedded any more: they live in the 'roms' data partition
 # and are uploaded over the USB console (ROMIN).  See main/dg_rom_store.h.
-# ROM images are NOT in this repository (Bandai copyright): put your own dumps in
-# roms/ and upload them with the PC tool.  Nothing from there lands in the binary.
+# main/roms/*.bin stays in the tree as the images the PC tool uploads; nothing
+# from that directory ends up inside the app binary.
+# D-Link battles are wired only (round 91): the PC relays frames over USB.
+# There is no ESP-NOW / Wi-Fi dependency in the app any more.
 idf_component_register(
-    SRCS "main.c" "digimon_app.c" "core/digimon_core.c" "dg_rom_store.c"
+    SRCS "main.c" "digimon_app.c" "core/digimon_core.c" "dg_rom_store.c" "dg_link.c" "dg_link_session.c" "dg_cards.c"
     INCLUDE_DIRS "." "core"
     REQUIRES bsp nvs_flash esp_timer esp_partition heap driver
 )

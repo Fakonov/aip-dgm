@@ -2,8 +2,8 @@
 import os
 from PIL import Image, ImageDraw
 
-ICONS = r".\docs\icons"
-FRAME = r"<home>"
+ICONS = r"<home>\digimon-passport\docs\icons"
+FRAME = r"<home>\AppData\Local\Temp\frame.txt"
 NAMES = ["stat", "virus", "medic", "battle", "poop", "light", "patch", "call"]
 
 

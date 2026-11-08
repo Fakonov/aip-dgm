@@ -15,7 +15,7 @@ import mock_v4 as M  # noqa: E402
 
 from PIL import Image, ImageDraw, ImageFont  # noqa: E402
 
-ROOT = r"."
+ROOT = r"<home>\digimon-passport"
 OUT = os.path.join(ROOT, "docs", "preview_darkgrey.png")
 
 # glass 224x203; 14 px top margin so the HUD row under it stays clear of the

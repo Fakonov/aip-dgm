@@ -67,6 +67,7 @@ int      dg_cpu_fast_mode(void);
 
 /* K0 interrupt latch, for input-path testing. */
 int dg_ik0_pending(void);
+int dg_dbg_k0(void);            /* raw K0 pin read, probe only */
 
 /* Small debug accessors. */
 uint16_t dg_npc(void);
@@ -84,6 +85,24 @@ void     dg_state_save(uint8_t *dst);
 int      dg_state_load(const uint8_t *src, uint32_t len);
 uint8_t dg_ram(int addr);
 void    dg_ram_write(int addr, uint8_t value);
+
+/* ---------------------------------------------------------------- link --
+ * D-Link (P2.0) plumbing.
+ *
+ * The ROM drives the line by writing 0xF62 and samples it by reading the same
+ * port, so the outside world needs both directions:
+ *   - drive the pin (what the other machine would do),
+ *   - watch what the ROM puts on it.
+ *
+ * dg_link_drive(): 0 = drive low, 1 = drive high, -1 = release (external
+ * pull-up decides).  Only bit 0 (mask 1) is touched.
+ * dg_link_latch(): the level the ROM is currently driving onto P2.0.
+ * dg_link_set_hook(): called on every write to 0xF62 with the written value;
+ * edge timing is the caller's business (see dg_link_wave.c).
+ */
+void dg_link_drive(int level);
+int  dg_link_latch(void);
+void dg_link_set_hook(void (*on_latch)(int level));
 
 #ifdef __cplusplus
 }

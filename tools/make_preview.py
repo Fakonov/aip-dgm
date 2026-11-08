@@ -13,7 +13,7 @@ import mock_v4 as M  # noqa: E402
 
 from PIL import Image, ImageDraw, ImageFont  # noqa: E402
 
-ROOT = r"."
+ROOT = r"<home>\digimon-passport"
 OLD = os.path.join(ROOT, "docs", "ui-v2", "17_icon_lit2.png")
 NEW = os.path.join(ROOT, "docs", "ui-v4", "17_icon_lit2.png")
 OUT = os.path.join(ROOT, "docs", "preview_layout.png")

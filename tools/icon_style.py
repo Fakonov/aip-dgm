@@ -19,7 +19,7 @@ import os
 
 from PIL import Image, ImageDraw, ImageFilter
 
-ICON_DIR = r".\docs\icons"
+ICON_DIR = r"<home>\digimon-passport\docs\icons"
 NAMES = ["stat", "virus", "medic", "battle", "poop", "light", "patch", "call"]
 
 # ---- palette -------------------------------------------------------------

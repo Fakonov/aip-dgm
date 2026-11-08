@@ -5,13 +5,14 @@ build-sim/
 *.elf
 *.map
 sdkconfig.old
+sdkconfig
+dependencies.lock.bak
 
 # except the docs pointing at them
 !roms/README.md
 
 # ESP-IDF managed dependencies (restored from dependencies.lock)
 managed_components/
-dependencies.lock.bak
 
 # host tools
 *.exe
@@ -21,6 +22,11 @@ dependencies.lock.bak
 *.log
 *.pgm
 *.bmp
+
+# simulator dumps and firmware images produced by the tools
+docs/ui-*/*.bin
+docs/ui-*/*/*.bin
+docs/backup/
 
 # python / node
 __pycache__/

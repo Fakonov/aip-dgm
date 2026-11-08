@@ -24,7 +24,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import icon_style as S  # noqa: E402
 
-OUT = r".\main\core\digimon_icons.h"
+OUT = r"<home>\digimon-passport\firmware\digimon-passport\main\core\digimon_icons.h"
 
 # slot geometry (panel pixels): 8 columns x 4 dot-rows at pitch 7
 # pitch 7 -> 224 x 203 glass, 56 px slots; pitch 8 would need a 118 KB canvas

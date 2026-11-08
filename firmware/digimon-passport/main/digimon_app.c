@@ -31,8 +31,13 @@
 #include "digimon_core.h"
 #include "digimon_segmap.h"
 #include "digimon_icons.h"
+#include "dg_theme.h"
+#include "dg_backdrop.h"
+#include "dg_brick.h"
 #include "dg_rom_store.h"
-
+#include "dg_link.h"
+#include "dg_cards.h"
+/* Wired D-Link only: the PC relays ROM frames over USB (see dg_link.c). */
 #ifdef DG_SIM_UART0_INPUT
 /* Simulator builds read the console from UART0: the wasm emulator models the
  * UART peripheral and nothing else, so the USB-Serial-JTAG console the device
@@ -84,13 +89,16 @@ static uint32_t s_rom_len;
  * slot-sized and blitted straight into the canvas instead of living as separate
  * LVGL widgets.
  */
-#define DG_PITCH      7                          /* panel px per dot */
-#define DG_BAND_H     (4 * DG_PITCH)             /* 28 */
-#define DG_GAP_TOP    ((2 * DG_PITCH) + 3)       /* 2.4 rows -> 17 */
-#define DG_GAP_BOT    ((2 * DG_PITCH) + 4)       /* 2.5 rows -> 18 */
-#define DG_GLASS_W    (DG_LCD_W * DG_PITCH)      /* 224 */
+/* pitch 6 (round 89): the glass is 14% smaller than the measured panel, which
+ * buys the 20 KB the ESP-NOW stack needs.  The icon band stays 28 px because
+ * the sprites are baked at 56x28 -- blit_slot() scales them down instead. */
+#define DG_PITCH      6                          /* panel px per dot */
+#define DG_BAND_H     28                         /* fixed: baked sprite height */
+#define DG_GAP_TOP    ((2 * DG_PITCH) + 3)       /* 2.4 rows -> 15 */
+#define DG_GAP_BOT    ((2 * DG_PITCH) + 4)       /* 2.5 rows -> 16 */
+#define DG_GLASS_W    (DG_LCD_W * DG_PITCH)      /* 192 */
 #define DG_GLASS_H    (DG_BAND_H + DG_GAP_TOP + DG_LCD_H * DG_PITCH + DG_GAP_BOT + DG_BAND_H)
-                                                 /* 28+17+112+18+28 = 203 */
+                                                 /* 28+15+96+16+28 = 183 */
 #define DG_MAT_Y      DG_BAND_H + DG_GAP_TOP     /* matrix top inside the glass */
 #define DG_SLOT_MAX   8                          /* 4 slots per band */
 
@@ -182,9 +190,9 @@ static int s_view_x, s_view_y;          /* canvas origin on the panel */
 #define DG_LCD_TONE 1
 static const uint16_t GLASS_TONE[3][3] = {
     /*   base      gap       lit        (hex in the comment) */
-    { 0x9D4E, 0xB611, 0x1902 },   /* 0  #9CAA73 #B5C28C #182010  round 55, +24 */
-    { 0x950D, 0xA56F, 0x1922 },   /* 1  #93A06B #A2AF7B #1B2417  default,   +15 */
-    { 0x8CCC, 0x952E, 0x1922 },   /* 2  #8C9A66 #96A473 #1B2417  deep,      +10 */
+    { 0x9D4E, 0xB611, 0x29C5 },   /* 0  #9CAA73 #B5C28C #2E382C  round 55, +24 */
+    { 0x950D, 0xA56F, 0x29C5 },   /* 1  #93A06B #A2AF7B #2E382C  default,   +15 */
+    { 0x8CCC, 0x952E, 0x29C5 },   /* 2  #8C9A66 #96A473 #2E382C  deep,      +10 */
 };
 #define GLASS_BASE_888 0x93A06B       /* must stay in sync with tone 1 */
 
@@ -200,24 +208,30 @@ typedef struct {
 /* Order = the retail order of the colourway sheet, so "SHELL" in the menu
  * walks the same sequence as the reference photo. */
 static const shell_t SHELLS[] = {
-    { "BROWN",  0x8A5A3C, 0x6B422A, 0xA87652, 0x382418, 0xF2E6D6 },  /* V1 初版???*/
-    { "GREY",   0x9AA0A2, 0x6E7476, 0xBFC4C6, 0x2A2E30, 0x1E2426 },  /* V1 初版???*/
-    { "RED",    0xB4332C, 0x86231E, 0xD66255, 0x3A1412, 0xFBECE6 },  /* V1 追加???*/
-    { "GREEN",  0x3E7A46, 0x2B5932, 0x63A06B, 0x142A18, 0xEFF7EC },  /* V1 追加???*/
-    { "BLUE",   0x2F5C8F, 0x1F3F66, 0x5A8CC0, 0x111E33, 0xE8F1FA },  /* V1 追加???*/
-    { "YELLOW", 0xD8B33C, 0xA88A24, 0xEFD76E, 0x3A2F0C, 0x2A2306 },  /* V1 追加???*/
-    { "BLACK",  0x2B2B2B, 0x141414, 0x555555, 0x0A0A0A, 0xD8D8D8 },  /* V2 初版???*/
-    { "WHITE",  0xEDEDE6, 0xC2C2B8, 0xFFFFFF, 0x2E2E2A, 0x22221F },  /* V2 初版???*/
-    { "CLEARB", 0x3A3A3E, 0x1E1E22, 0x6A6A70, 0x14141A, 0xE2E2E8 },  /* V2 透明???*/
-    { "CLEARW", 0xDDDCD2, 0xB4B3A8, 0xF6F5EE, 0x2A2A26, 0x242420 },  /* V2 透明???*/
-    { "ORANGE", 0xE0701C, 0xB0520F, 0xFF9A44, 0x3D1E06, 0x2B1604 },  /* V3 ???*/
-    { "PURPLE", 0x6B4C9A, 0x4A3270, 0x9077C4, 0x231636, 0xF0E9FA },  /* V3 ???*/
+    { "BROWN",  0x8A5A3C, 0x6B422A, 0xA87652, 0x382418, 0xF2E6D6 },  /* V1 初版棕 */
+    { "GREY",   0x9AA0A2, 0x6E7476, 0xBFC4C6, 0x2A2E30, 0x1E2426 },  /* V1 初版灰 */
+    { "RED",    0xB4332C, 0x86231E, 0xD66255, 0x3A1412, 0xFBECE6 },  /* V1 追加红 */
+    { "GREEN",  0x3E7A46, 0x2B5932, 0x63A06B, 0x142A18, 0xEFF7EC },  /* V1 追加绿 */
+    { "BLUE",   0x2F5C8F, 0x1F3F66, 0x5A8CC0, 0x111E33, 0xE8F1FA },  /* V1 追加蓝 */
+    { "YELLOW", 0xD8B33C, 0xA88A24, 0xEFD76E, 0x3A2F0C, 0x2A2306 },  /* V1 追加黄 */
+    { "WHITE",  0xEDEDE6, 0xC2C2B8, 0xFFFFFF, 0x2E2E2A, 0x22221F },  /* V2 初版白 */
     { "DARKGREY", 0x3C4143, 0x2A2E30, 0x5E6669, 0x171A1B, 0xD9D4C6 },/* 深灰（默认） */
-    { "CREAM",  0xE9E6D8, 0x6D7A52, 0x8A966C, 0x333A28, 0x4A523A },  /* 工程米色 */
 };
 #define SHELL_COUNT ((int)(sizeof(SHELLS) / sizeof(SHELLS[0])))
-#define SHELL_DEFAULT (SHELL_COUNT - 2)          /* DARKGREY */
+#define SHELL_DARKGREY 7                         /* index of "DARKGREY" */
+#define SHELL_DEFAULT SHELL_DARKGREY
 static uint8_t s_shell = SHELL_DEFAULT;
+
+/* Panel style (round 93, closed).
+ *   STYLE_CLASSIC  the milestone look: shell colour + olive glass matrix
+ *   STYLE_RETAIL   brick-textured shell, full-resolution backdrop in the glass,
+ *                  black dots, black icons, mesh shaded 6 % into the backdrop
+ * Style C keeps no LVGL furniture at all — every frame line, bar and strap lug
+ * was rejected — so switching styles costs nothing but a repaint. */
+#define STYLE_CLASSIC 0
+#define STYLE_RETAIL  1
+static uint8_t s_style;
+
 #define PAPER_COLOR   SHELLS[s_shell].body
 #define BEZEL_COLOR   SHELLS[s_shell].rim
 #define BEZEL_HI      SHELLS[s_shell].hi
@@ -236,7 +250,24 @@ static uint8_t s_last_pic[DG_LCD_H][DG_LCD_W];   /* shadow, for dirty detection 
 static bool s_pic_valid;
 static lv_obj_t *s_canvas;
 static QueueHandle_t s_key_q;
+
+/* ---- M2 link plumbing --------------------------------------------------- */
+static int      s_link_log;          /* LINKLOG 1: print every frame the ROM sends */
+static uint32_t s_link_rx;           /* frames taken from the waveform layer */
+static uint32_t s_link_tx;           /* frames handed to it (LINKFRAME) */
+static uint8_t  s_inj_mask;          /* console-injected button still held down */
+static uint32_t s_inj_until;         /* ... until this OSC1 tick */
 static uint32_t s_frames;
+
+#ifdef DG_SIM_UART0_INPUT
+/* Pitch-7 stability counters (sim build only; release build compiles them
+ * out so the shipped image stays byte-identical).  UART0 is the only console
+ * the wasm emulator forwards. */
+static uint32_t s_diag_redraws;
+static uint32_t s_diag_render_us;
+static uint32_t s_diag_render_max;
+static uint32_t s_diag_heap_min;
+#endif
 
 /* minimum-hold shim for the emulated keys (see the drain loop in dg_task) */
 static uint8_t s_key_mask;        /* mask of the key currently held down */
@@ -254,6 +285,29 @@ static bool s_ok_armed;           /* a real OK press is being timed */
 static bool s_ok_held_consumed;   /* the hold already opened the menu */
 static int64_t s_ok_press_us;
 static uint8_t s_wake_mask;       /* key whose press woke the screen */
+
+/* Long-hold A inside the clock screen (todo #16, round 3): the real unit enters
+ * the time-set state with A+C held for ~3 s, which the ADC keypad cannot produce
+ * by hand.  So a 1.2 s hold on A releases the A edge and injects A+C.
+ * Only in mode 1 (clock screen): everywhere else A means "next icon" and must
+ * stay a plain key.  The ROM's mute latch is left alone -- no long-press mute.
+ *
+ * Todo #20: the combo used to be held for the full AC_INJECT_US (3.2 s) even
+ * though the ROM jumps into time-set within ~1-2 s.  Nothing else could reach
+ * the keypad while the combo was down, so the unit felt frozen for the tail of
+ * that window.  Now the release fires as soon as the ROM's own sub-mode
+ * (M(0x0A)) changes -- that is the observable proof the combo landed -- and
+ * AC_INJECT_US is only the upper bound in case the ROM ignores us. */
+#define AC_HOLD_US     1200000
+#define AC_INJECT_US   3200000
+static bool s_a_down;
+static bool s_a_armed;
+static int64_t s_a_press_us;
+static bool s_ac_active;
+static int64_t s_ac_until_us;
+static uint8_t s_ac_sub_base;     /* M(0x0A) sampled when the combo went down */
+static int32_t s_ac_last_ms;      /* how long the last combo actually stayed down */
+static bool s_mute_checked;       /* the load-time stale-latch check already ran */
 
 typedef struct { uint8_t mask; uint8_t down; } dg_key_ev_t;
 
@@ -296,7 +350,8 @@ static void save_rom_index(int idx)
  * menu, ROM switch), because the power key is hardware and cuts power without
  * telling the firmware. */
 #define SAVE_MAGIC       0x31474744u          /* "DGG1" */
-#define SAVE_INTERVAL_US (60 * 1000 * 1000)
+#define SAVE_INTERVAL_US (60 * 1000 * 1000)    /* 1 min -- todo #7 rolled back: 5 min threw
+                                                * away too much on a power cut (user, 2026-11-09) */
 #define SAVE_BUF_SIZE    (4096)
 
 typedef struct {
@@ -311,6 +366,13 @@ static uint8_t  s_save_buf[SAVE_BUF_SIZE];
 static uint32_t s_rom_crc[DG_ROM_SLOTS];
 static uint32_t s_save_seq;
 static int64_t  s_last_save_us;
+/* M(0x99) = battle counter.  The 60 s rolling autosave usually misses the
+ * instant a battle ends, and the score is then lost on the next power cut
+ * (round 85).  Watch it in the main loop and commit as soon as it moves. */
+static uint8_t  s_bouts_seen;
+static bool     s_bouts_valid;
+static int64_t  s_bouts_save_at;   /* deferred NVS write, see the main loop */
+static int      s_mute_fixes;      /* M(0x17) bit3 bail-outs, log-limited */
 
 static uint32_t crc32_calc(const uint8_t *p, uint32_t n)
 {
@@ -485,7 +547,12 @@ static void rom_skip_minutes(int minutes, const char *label)
          * progress number to visibly tick over without dragging the skip out.
          * An earlier version yielded every 4096 steps and threw 95 % of the CPU
          * away, which is why a 2 h skip took over three minutes. */
-        if ((batch & 7) == 0) {
+        /* Yield every 16k steps, not every 64k: a *short* skip (5 min = ~6 s of
+         * wall time) used to finish inside a single 8-batch window and never
+         * reach this branch at all, so the task watchdog fired and the board
+         * rebooted mid-skip -- which also threw the skipped time away.
+         * 16k steps is ~0.05 s, so this costs about 2 % instead of 11 %. */
+        if ((batch & 1) == 0) {
             int pct = (int)(((uint64_t)(dg_osc1_ticks() - start) * 100u) / total_ticks);
             if (pct != last_pct && s_skip_lbl && bsp_lvgl_lock(20)) {
                 last_pct = pct;
@@ -537,6 +604,7 @@ static bool rom_load(int idx)
     s_rom_ptr = p;
     s_rom_len = len;
     dg_init(p, len);
+    dg_link_init();
     age_reset();
     s_pic_valid = false;
     s_icon_state = 0xFF;
@@ -663,6 +731,12 @@ static bool save_slot(int idx)
     if (e == ESP_OK) {
         s_last_save_us = esp_timer_get_time();
         age_save(idx);
+        /* re-baseline the battle counter so the watchdog below does not fire
+         * again for a change we just persisted */
+        if (s_have_rom) {
+            s_bouts_seen = (uint8_t)dg_ram(0x099);
+            s_bouts_valid = true;
+        }
         ESP_LOGI(TAG, "saved %s (%u B)", rom_name(idx), (unsigned)size);
     } else {
         ESP_LOGW(TAG, "save %s failed: %s", rom_name(idx), esp_err_to_name(e));
@@ -693,6 +767,8 @@ static bool load_slot(int idx)
 
     if (hdr->seq > s_save_seq) s_save_seq = hdr->seq;
     s_last_save_us = esp_timer_get_time();
+    s_bouts_valid = false;      /* re-baseline the battle counter watchdog */
+    s_mute_checked = false;     /* check the restored state's mute latch once */
     age_load(idx);
     ESP_LOGI(TAG, "restored %s (seq %u)", rom_name(idx), (unsigned)hdr->seq);
     return true;
@@ -732,6 +808,15 @@ static void on_button(bsp_btn_t btn, bsp_btn_ev_t ev, void *user)
  * surface as the matrix is what the real glass looks like - they are segments
  * on one piece of glass, 2.4 / 2.5 dot-rows away from the matrix, not rows of
  * it (ref/vpet_v1v2v3/屏幕版式说明.md). */
+/* RGB565 x 3/4 — the matrix grid line over a photo backdrop. */
+static inline uint16_t darken565(uint16_t c)
+{
+    uint16_t r = (uint16_t)((((c >> 11) & 0x1F) * 3) / 4);
+    uint16_t g = (uint16_t)((((c >> 5) & 0x3F) * 3) / 4);
+    uint16_t b = (uint16_t)(((c & 0x1F) * 3) / 4);
+    return (uint16_t)((r << 11) | (g << 5) | b);
+}
+
 static int render_lcd(void)
 {
     const uint8_t *v = dg_vram();
@@ -752,11 +837,22 @@ static int render_lcd(void)
 
     if (!changed) return 0;
 
+#ifdef DG_SIM_UART0_INPUT
+    int64_t diag_t0 = esp_timer_get_time();
+#endif
+
     const uint16_t *tone = GLASS_TONE[DG_LCD_TONE];
     const uint16_t base = tone[0], gap = tone[1];
 
-    /* 1. the whole glass, including both icon bands and the blank margins */
-    for (int i = 0; i < s_view_w * s_view_h; i++) s_canvas_buf[i] = base;
+    /* 1. the whole glass, including both icon bands and the blank margins.
+     * Style C copies the full-resolution backdrop straight in: one 70 KB memcpy
+     * is cheaper than the per-cell mosaic it replaced and the scene stays smooth
+     * instead of breaking into 8 px blocks. */
+    if (s_style == STYLE_RETAIL) {
+        memcpy(s_canvas_buf, dg_backdrop, sizeof(dg_backdrop));
+    } else {
+        for (int i = 0; i < s_view_w * s_view_h; i++) s_canvas_buf[i] = base;
+    }
 
     /* 2. the dot matrix: every cell is PITCH square and carries the grid line
      *    on its right and bottom, so the mesh closes at the bottom and on the
@@ -765,21 +861,63 @@ static int render_lcd(void)
      *    open against the blank glass.  Steal one pixel from the top margin and
      *    draw the closing line there.  (The left edge is flush with the glass
      *    itself and needs none: the bezel recess is the border.) */
+    /* Closing line above row 0 — without it the mesh has no top edge.  Style C
+     * shades the backdrop (same 6 % as the cell mesh) instead of painting the
+     * classic gap tone, so the line sits in the photo rather than on it. */
     {
         uint16_t *top = &s_canvas_buf[(DG_MAT_Y - 1) * s_view_w];
-        for (int x = 0; x < s_view_w; x++) top[x] = gap;
+        for (int x = 0; x < s_view_w; x++) {
+            if (s_style == STYLE_RETAIL) {
+                uint16_t v = top[x];
+                uint16_t r5 = (uint16_t)(((v >> 11) & 0x1F) * 15 / 16);
+                uint16_t g6 = (uint16_t)(((v >> 5) & 0x3F) * 15 / 16);
+                uint16_t b5 = (uint16_t)((v & 0x1F) * 15 / 16);
+                top[x] = (uint16_t)((r5 << 11) | (g6 << 5) | b5);
+            } else {
+                top[x] = gap;
+            }
+        }
     }
     const int p = DG_PITCH;
     for (int r = 0; r < DG_LCD_H; r++) {
         uint16_t *row = &s_canvas_buf[(DG_MAT_Y + r * p) * s_view_w];
-        for (int dy = 0; dy < p; dy++) {
-            for (int dx = 0; dx < s_view_w; dx++) row[dy * s_view_w + dx] = gap;
-        }
         for (int c = 0; c < DG_LCD_W; c++) {
-            uint16_t color = tone[cur[r][c] ? 2 : 0];
-            for (int dy = 0; dy < p - 1; dy++) {
-                uint16_t *dst = &row[dy * s_view_w + c * p];
-                for (int dx = 0; dx < p - 1; dx++) dst[dx] = color;
+            /* Per-cell backdrop.  The colour matrix samples its own colour out of
+             * dg_matrix_bg; the classic theme keeps the flat glass tone.  The grid
+             * line is a darkened copy of whatever the cell sits on, so the mesh
+             * stays visible over a photo instead of turning into a cage of
+             * glass-coloured lines. */
+            if (s_style == STYLE_RETAIL) {
+                /* Backdrop is already in place: draw the dot (if lit) and a light
+                 * mesh on the empty cells only, so a dot never gets sliced by the
+                 * grid line. */
+                uint16_t on = tone[2];
+                for (int dy = 0; dy < p; dy++) {
+                    uint16_t *dst = &row[dy * s_view_w + c * p];
+                    int edge_y = (dy == p - 1);
+                    for (int dx = 0; dx < p; dx++) {
+                        if (cur[r][c]) {
+                            dst[dx] = on;
+                        } else if (edge_y || dx == p - 1) {
+                            /* Mesh = the backdrop itself, 6 % darker.  A fixed grey
+                             * line turns into white graph paper over the sand. */
+                            uint16_t v = dst[dx];
+                            uint16_t r5 = (uint16_t)(((v >> 11) & 0x1F) * 15 / 16);
+                            uint16_t g6 = (uint16_t)(((v >> 5) & 0x3F) * 15 / 16);
+                            uint16_t b5 = (uint16_t)((v & 0x1F) * 15 / 16);
+                            dst[dx] = (uint16_t)((r5 << 11) | (g6 << 5) | b5);
+                        }
+                    }
+                }
+            } else {
+                uint16_t color = cur[r][c] ? tone[2] : base;
+                for (int dy = 0; dy < p; dy++) {
+                    uint16_t *dst = &row[dy * s_view_w + c * p];
+                    int edge_y = (dy == p - 1);
+                    for (int dx = 0; dx < p; dx++) {
+                        dst[dx] = (edge_y || dx == p - 1) ? gap : color;
+                    }
+                }
             }
         }
     }
@@ -788,6 +926,14 @@ static int render_lcd(void)
     s_pic_valid = true;
     s_icon_stale = true;         /* the bands were just wiped: re-blit them */
     lv_obj_invalidate(s_canvas);
+#ifdef DG_SIM_UART0_INPUT
+    {
+        uint32_t dt = (uint32_t)(esp_timer_get_time() - diag_t0);
+        s_diag_redraws++;
+        s_diag_render_us += dt;
+        if (dt > s_diag_render_max) s_diag_render_max = dt;
+    }
+#endif
     return 1;
 }
 
@@ -815,17 +961,36 @@ static uint8_t icon_bits(void)
     return state;
 }
 
-static void blit_slot(const lv_image_dsc_t *img, int x, int y)
+static void blit_slot(const lv_image_dsc_t *img, int x, int y, int filled)
 {
     const uint16_t *src = (const uint16_t *)img->data;
-    for (int r = 0; r < DG_SLOT_H; r++) {
+    const int sw = img->header.w, sh = img->header.h;
+    const int dw = DG_GLASS_W / 4, dh = DG_BAND_H;      /* 48 x 28 at pitch 6 */
+    for (int r = 0; r < dh; r++) {
         int dy = y + r;
         if (dy < 0 || dy >= s_view_h) continue;
         uint16_t *dst = &s_canvas_buf[dy * s_view_w + x];
-        const uint16_t *s = &src[r * DG_SLOT_W];
-        for (int c = 0; c < DG_SLOT_W; c++) {
+        const uint16_t *s = &src[(r * sh / dh) * sw];
+        for (int c = 0; c < dw; c++) {
             int dx = x + c;
-            if (dx >= 0 && dx < s_view_w) dst[c] = s[c];
+            if (dx < 0 || dx >= s_view_w) continue;
+            uint16_t sv = s[c * sw / dw];
+            if (s_style == STYLE_RETAIL) {
+                /* Sprites are baked on the olive glass tone; that colour means
+                 * "background".  It has to be written back, not skipped: the
+                 * canvas still holds the previous sprite there, so skipping left
+                 * the old lit icon's dark plate behind and the icon looked stuck
+                 * black until the glass happened to repaint.
+                 * Outline sprites are forced to the LCD ink so the icons read
+                 * black; filled sprites (dark plate + white artwork) are already
+                 * legible on any backdrop. */
+                if (sv == DG_GLASS_KEY565) {
+                    dst[c] = dg_backdrop[dy * s_view_w + dx];
+                    continue;
+                }
+                if (!filled) { dst[c] = DG_ICON_INK565; continue; }
+            }
+            dst[c] = sv;
         }
     }
 }
@@ -840,7 +1005,8 @@ static void render_icons(void)
         int col = i & 3, row = i >> 2;
         int x = col * slot_w;
         int y = row ? DG_GLASS_H - DG_BAND_H : 0;
-        blit_slot((state >> i) & 1u ? ICON_FILLED[i] : ICON_OUTLINE[i], x, y);
+        blit_slot((state >> i) & 1u ? ICON_FILLED[i] : ICON_OUTLINE[i], x, y,
+                  (state >> i) & 1u);
     }
     s_icon_stale = false;
     lv_obj_invalidate(s_canvas);
@@ -865,17 +1031,32 @@ static void render_icons(void)
  *   C (OK)     close the menu (BACK inside the ROM sub-list)
  * While it is open the ROM receives no key events.
  *
- * Seven rows, time first: SKIP TIME, PLAY TIME, then the settings proper.
- * SAVE OUT / SAVE IN are gone on purpose -- saving belongs to the PC tool
- * (tools/digimon_studio.html drives SAVEOUT / SAVEIN), and duplicating a 25 s
- * blocking import on a 240 px panel was never a good idea.  The console
- * commands themselves are untouched. */
-#define MENU_ROWS 7
-enum { M_SKIP, M_PLAY, M_ROM, M_SHELL, M_BRIGHT, M_VOL, M_AUTO };
+ * Five rows, grouped (todo #17): TIME / ROM / BATTLE / APPEAR / POWER.  The
+ * three group rows open a shared three-row second level instead of piling nine
+ * rows into a 200 px panel; SKIP TIME still only takes effect when the
+ * *first-level* panel closes, so picking a length there and backing out with C
+ * changes nothing.  SAVE OUT / SAVE IN are gone on purpose -- saving belongs to
+ * the PC tool (tools/digimon_studio.html drives SAVEOUT / SAVEIN), and
+ * duplicating a 25 s blocking import on a 240 px panel was never a good idea.
+ * The console commands themselves are untouched. */
+#define MENU_ROWS 5
+enum { M_TIME, M_ROM, M_BATTLE, M_APPEAR, M_POWER };
+
+/* Second level shared by TIME / APPEAR / POWER: one panel, up to three rows,
+ * two labels per row.  Built once and re-filled on open, so the LVGL pool does
+ * not grow with every group. */
+#define SUB_ROWS 3
+enum { SUB_TIME, SUB_APPEAR, SUB_POWER };
 
 /* SKIP TIME: consumed when the panel closes, never persisted */
-static const uint8_t SKIP_MINUTES[] = { 0, 5, 30, 60, 120 };
-static const char *const SKIP_TEXT[] = { "OFF", "5M/9S", "30M/38S", "1H/75S", "2H/150S" };
+/* 12H / 24H were added for the long skips (todo #1).  The array is uint16_t on
+ * purpose: 24 * 60 = 1440 does not fit in a uint8_t and would silently wrap to
+ * 160 minutes.  The wall-clock estimates assume the measured 48x of real time
+ * (2H took 150 s), so 12H = 900 s and 24H = 1800 s.  Keep them honest if the
+ * skip path gets faster. */
+static const uint16_t SKIP_MINUTES[] = { 0, 5, 30, 60, 120, 12 * 60, 24 * 60 };
+static const char *const SKIP_TEXT[] = { "OFF", "5M/9S", "30M/38S", "1H/75S", "2H/150S",
+                                         "12H/900S", "24H/1800S" };
 #define SKIP_COUNT ((int)(sizeof SKIP_MINUTES / sizeof SKIP_MINUTES[0]))
 static uint8_t s_skip_idx;
 
@@ -889,6 +1070,18 @@ static lv_obj_t *s_menu_val[MENU_ROWS];
 static bool s_menu_open;
 static int s_menu_sel;
 
+/* shared second-level panel (TIME / APPEAR / POWER) */
+static lv_obj_t *s_sub;
+static lv_obj_t *s_sub_title;
+static lv_obj_t *s_sub_row[SUB_ROWS];
+static lv_obj_t *s_sub_name[SUB_ROWS];
+static lv_obj_t *s_sub_val[SUB_ROWS];
+static bool s_sub_open;
+static int s_sub_kind;
+static int s_sub_sel;
+static int s_sub_count;
+static int s_sub_confirm;      /* PLAY TIME wipe: 0 idle, 1 = armed */
+
 /* second level: every ROM slot with the play time stored next to its save */
 /* second level: every ROM slot with the play time stored next to its save,
  * plus one danger row at the bottom that wipes a save after two confirmations */
@@ -901,7 +1094,28 @@ static lv_obj_t *s_rom_time[ROM_MENU_ROWS];
 static bool s_rom_menu_open;
 static int s_rom_sel;              /* 0..7 = slot, DG_ROM_SLOTS = reset row */
 static int s_rom_confirm;          /* 0 idle, 1 = SURE?, 2 = REALLY? */
-static uint8_t s_bright = 100;      /* 20..100 % */
+
+/* BATTLE second level: the eight offline battle cards (dg_cards.c).  A row per
+ * card with its species slot / effort on the right; B starts it, which arms the
+ * card responder and walks the ROM into the battle screen on its own. */
+#define CARD_MENU_ROWS DG_CARD_SLOTS
+static lv_obj_t *s_card_menu;
+static lv_obj_t *s_card_lbl[CARD_MENU_ROWS];
+static int s_card_widgets;          /* rows that actually fit the LVGL pool */
+static bool s_card_menu_open;
+static int s_card_sel;
+
+/* Auto-walk into a card battle.  The ROM owns the keypad, so the only way to
+ * start a fight without hands is to tap A/B for it and steer by STATE (the
+ * same thing tools/dg_link_battle.py does over the console).  Phases run from
+ * the main loop at WALK_STEP_US; any failure cancels cleanly. */
+#define WALK_STEP_US   (500 * 1000)
+#define WALK_MAX_TRIES 14
+static int s_walk;                  /* 0 idle, 1 = walking */
+static int s_walk_tries;
+static int s_walk_launched;         /* B already pressed on sub==2 */
+static int64_t s_walk_next_us;
+static uint8_t s_bright = 70;       /* 20..100 %; 70 % is the power-saving default (todo #6) */
 static uint8_t s_vol = 60;          /* 0..100 % */
 static uint16_t s_auto_sec;         /* screen-off timeout, 0 = never */
 static bool s_screen_off;
@@ -933,6 +1147,7 @@ static void save_ui_settings(void)
         nvs_set_u8(h, "vol", s_vol);
         nvs_set_u16(h, "auto", s_auto_sec);
         nvs_set_u8(h, "shell", s_shell);
+        nvs_set_u8(h, "sty", s_style);
         nvs_commit(h);
         nvs_close(h);
     }
@@ -948,6 +1163,7 @@ static void load_ui_settings(void)
     if (nvs_get_u8(h, "vol", &v8) == ESP_OK && v8 <= 100) s_vol = v8;
     if (nvs_get_u16(h, "auto", &v16) == ESP_OK) s_auto_sec = v16;
     if (nvs_get_u8(h, "shell", &v8) == ESP_OK && v8 < SHELL_COUNT) s_shell = v8;
+    if (nvs_get_u8(h, "sty", &v8) == ESP_OK && v8 <= STYLE_RETAIL) s_style = v8;
     nvs_close(h);
 }
 
@@ -995,6 +1211,26 @@ static void con_printf(const char *fmt, ...)
     fflush(stdout);
 #endif
 }
+
+/* Hold one emulated key for <ms>.  Used by the KEY console command and by the
+ * card auto-walk; the release happens in the main loop (s_inj_until) because a
+ * blocking wait here would stop the ROM while the key is still down. */
+static void key_inject(uint8_t mask, int ms)
+{
+    if (!s_have_rom) return;
+    if (ms < 50) ms = 50;
+    if (ms > 3000) ms = 3000;
+    if (s_inj_mask) {                 /* never leave a stale key held down */
+        dg_set_button(s_inj_mask, 0);
+        s_inj_mask = 0;
+    }
+    dg_set_button(mask, 1);
+    s_inj_mask = mask;
+    s_inj_until = dg_osc1_ticks() + (uint32_t)(ms * 32.768f);
+}
+
+static void card_battle_begin(int idx);      /* menu_key / console, defined below */
+static void apply_shell(void);               /* STYLE / SHELLSET, defined below */
 
 static void save_export(int idx)
 {
@@ -1386,6 +1622,195 @@ static void console_poll(void)
                 /* same jump as the SKIP TIME menu row; handy for scripted checks
                  * now that a skip really executes the game time */
                 rom_skip_minutes(atoi(line + 5), NULL);
+            } else if (strncmp(line, "SAVE", 4) == 0) {
+                /* Persist right now.  Closing the USB-Serial-JTAG port resets the
+                 * unit (DTR/RTS), which used to eat the battle result: `bouts`
+                 * changed, the save was still 4 s away, the page was closed, the
+                 * unit rebooted and the counter came back from the older save.
+                 * The studio sends this before it disconnects.  Must stay after
+                 * SAVEOUT/SAVEIN because "SAVE" is a prefix of both. */
+                bool ok = s_have_rom && save_slot(s_rom_idx);
+                con_printf("SAVE %s\n", ok ? "OK" : "FAIL");
+            } else if (strncmp(line, "EVT", 3) == 0) {
+                /* Everything the key/battle state machine reads, on one line:
+                 * M(0x00..0x0F), sleep and the current PC.  Capture one of
+                 * these when "B exits the battle screen" and another when
+                 * "B is swallowed", then diff them. */
+                char row[20];
+                for (int j = 0; j < 16; j++) {
+                    row[j] = "0123456789ABCDEF"[dg_ram(j) & 0xF];
+                }
+                row[16] = 0;
+                con_printf("EVT m00=%s sleep=%X pc=%04X mode=%X sub=%X\n",
+                           row, dg_ram(0x33), dg_pc(), dg_ram(0x09), dg_ram(0x0A));
+            } else if (strncmp(line, "DBG", 3) == 0) {
+                uint16_t st[8];
+                dg_dbg_state(st);
+                /* ac= is the A+C injection watchdog (todo #20): 1 while the
+                 * combo is still held, followed by how long it has been down.
+                 * Bench hook -- it is how we prove the early release without a
+                 * camera on the panel (ESP_LOG does not reach the simulator). */
+                long long ac_ms = s_ac_active
+                    ? (long long)((esp_timer_get_time() - (s_ac_until_us - AC_INJECT_US)) / 1000)
+                    : 0;
+                con_printf("DBG pc=%04X npc=%04X sp=%02X f=%X ik0=%d ac=%d/%lld last=%ld\n",
+                           st[5], st[6], st[4], st[7], dg_ik0_pending(),
+                           (int)s_ac_active, ac_ms, (long)s_ac_last_ms);
+            } else if (strncmp(line, "RAMW ", 5) == 0) {
+                /* Raw nibble poke, for rescuing a starved pet or nudging the ROM
+                 * into a state the UI cannot reach without physical keys. */
+                char *endp = NULL;
+                int addr = (int)strtol(line + 5, &endp, 16);
+                int val = endp ? (int)strtol(endp, NULL, 16) : 0;
+                if (addr < 0 || addr > 0x2FF) {
+                    con_printf("RAMWBAD\n");
+                } else {
+                    dg_ram_write(addr, (uint8_t)val);
+                    con_printf("RAMW %02X=%X\n", addr, dg_ram(addr));
+                }
+            } else if (strncmp(line, "KEY ", 4) == 0) {
+                /* Console-injected button so the box can be exercised with nobody
+                 * at the desk.  KEY <mask> <ms>, mask 4 = A, 2 = B, 1 = C.
+                 * The press is released from the main loop after <ms>, because a
+                 * blocking wait here would stop the ROM while the key is down. */
+                int m = atoi(line + 4);
+                const char *sp = strchr(line + 4, ' ');
+                int ms = sp ? atoi(sp + 1) : 300;
+                if (ms < 50) ms = 50;
+                if (ms > 3000) ms = 3000;
+                /* 1..7: bit0 = C, bit1 = B, bit2 = A.  Combinations are allowed
+                 * for probing: the ADC keypad cannot produce them by hand, but
+                 * the ROM may still decode them, which is how the "A+C" idea
+                 * gets verified before wiring a long-press to it. */
+                if (m >= 1 && m <= 7) {
+                    key_inject((uint8_t)m, ms);
+                    con_printf("KEY %d %d ok rom=%d k0=%X\n", m, ms, (int)s_have_rom, dg_dbg_k0());
+                } else {
+                    con_printf("KEYBAD\n");
+                }
+            } else if (strncmp(line, "LINKHELLO", 9) == 0) {
+                con_printf("LINK v1 %s slot=%X mode=%X sub=%X\n",
+                           rom_name(s_rom_idx), dg_ram(0x00B), dg_ram(0x009), dg_ram(0x00A));
+            } else if (strncmp(line, "LINKLOG ", 8) == 0) {
+                s_link_log = atoi(line + 8) ? 1 : 0;
+                con_printf("LINKLOG %d\n", s_link_log);
+            } else if (strncmp(line, "LINKFRAME ", 10) == 0) {
+                unsigned v = (unsigned)strtoul(line + 10, NULL, 16) & 0xFFFFu;
+                int ok = dglink_start_rx(&g_dglink, (uint16_t)v);
+                if (ok) s_link_tx++;
+                con_printf("LINKFRAME %04X %s\n", v, ok ? "queued" : "busy");
+            } else if (strncmp(line, "LINKSTAT", 8) == 0) {
+                con_printf("LINKSTAT romtx=%u peertx=%u edges=%u busy=%d log=%d card=%s\n",
+                           (unsigned)s_link_rx, (unsigned)s_link_tx,
+                           (unsigned)g_dglink.edges, dglink_rx_busy(&g_dglink),
+                           s_link_log, dg_card_battle_state());
+            } else if (strncmp(line, "CARDL", 5) == 0) {
+                /* the eight offline battle cards, one line each */
+                for (int i = 0; i < DG_CARD_SLOTS; i++) {
+                    dg_card_t c;
+                    if (dg_card_load(i, &c))
+                        con_printf("CARD %d slot=%X effort=%u ver=%u name=%s\n",
+                                   i, (unsigned)c.slot, (unsigned)c.effort,
+                                   (unsigned)c.version, c.name);
+                    else
+                        con_printf("CARD %d EMPTY\n", i);
+                }
+                con_printf("CARDEND\n");
+                fflush(stdout);
+            } else if (strncmp(line, "CARDW ", 6) == 0) {
+                /* CARDW <n> <slot:hex> <effort> <ver> [name] -- slot is hex
+                 * because every other slot report in this console prints it
+                 * that way (STATE slot=3, ROM slots, LINKHELLO). */
+                int n = -1, slot = -1, effort = -1, ver = -1;
+                char name[DG_CARD_NAME_LEN + 1];
+                name[0] = 0;
+                int got = sscanf(line + 6, "%d %x %d %d %10s", &n, &slot, &effort, &ver, name);
+                dg_card_t c;
+                memset(&c, 0, sizeof c);
+                c.slot = (uint8_t)(slot < 0 ? 3 : slot);
+                c.effort = (uint8_t)(effort < 0 ? 0 : effort);
+                c.version = (uint8_t)(ver < 0 ? 0 : ver);
+                snprintf(c.name, sizeof c.name, "%s", name);
+                if (got < 3 || !dg_card_save(n, &c))
+                    con_printf("CARDWBAD\n");
+                else
+                    con_printf("CARDW %d slot=%X effort=%u ver=%u name=%s\n",
+                               n, (unsigned)c.slot, (unsigned)c.effort,
+                               (unsigned)c.version, c.name);
+                fflush(stdout);
+            } else if (strncmp(line, "CARDDEL ", 8) == 0) {
+                int n = atoi(line + 8);
+                con_printf("CARDDEL %d %s\n", n, dg_card_erase(n) ? "ok" : "bad");
+                fflush(stdout);
+            } else if (strncmp(line, "CARDGO ", 7) == 0) {
+                /* arm a card and let the firmware walk itself into the fight */
+                int n = atoi(line + 7);
+                card_battle_begin(n);
+                con_printf("CARDGO %d armed=%d\n", n, (int)dg_card_battle_armed());
+                fflush(stdout);
+            } else if (strncmp(line, "CARDST", 6) == 0) {
+                con_printf("CARD armed=%d state=%s frames=%d replies=%d walk=%d picker=%d cards=%d\n",
+                           (int)dg_card_battle_armed(), dg_card_battle_state(),
+                           dg_card_battle_frames(), dg_card_battle_replies(), s_walk,
+                           (int)s_card_menu_open, dg_card_count());
+                fflush(stdout);
+            } else if (strncmp(line, "CARDOFF", 7) == 0) {
+                s_walk = 0;
+                dg_card_battle_disarm();
+                con_printf("CARDOFF ok\n");
+                fflush(stdout);
+            } else if (strncmp(line, "STYLE", 5) == 0) {
+                /* Panel style: 0 = classic (milestone look), 1 = retail (black
+                 * icons, grey grid, low-res backdrop, decorative bezel).  Persisted
+                 * next to the shell colour. */
+                const char *a = line + 5;
+                while (*a == ' ') a++;
+                s_style = (*a && *a != '0') ? STYLE_RETAIL : STYLE_CLASSIC;
+                s_pic_valid = false;          /* force a full glass repaint */
+                s_icon_stale = true;
+                if (bsp_lvgl_lock(100)) { apply_shell(); bsp_lvgl_unlock(); }
+                save_ui_settings();
+                con_printf("STYLE %d %s\n", (int)s_style,
+                           s_style == STYLE_RETAIL ? "retail" : "classic");
+                fflush(stdout);
+            } else if (strncmp(line, "SHELLSET ", 9) == 0) {
+                /* Pick a colourway by index or by name.  The menu can only walk
+                 * the list with B, which is painful when checking one palette. */
+                const char *a = line + 9;
+                while (*a == ' ') a++;
+                int idx = -1;
+                if (*a >= '0' && *a <= '9') {
+                    idx = atoi(a);
+                } else {
+                    for (int i = 0; i < SHELL_COUNT; i++)
+                        if (strcmp(a, SHELLS[i].name) == 0) { idx = i; break; }
+                }
+                if (idx < 0 || idx >= SHELL_COUNT) {
+                    con_printf("SHELLBAD\n");
+                } else {
+                    s_shell = (uint8_t)idx;
+                    if (bsp_lvgl_lock(100)) { apply_shell(); bsp_lvgl_unlock(); }
+                    save_ui_settings();
+                    con_printf("SHELL %d %s\n", idx, SHELLS[idx].name);
+                }
+                fflush(stdout);
+            } else if (strncmp(line, "SNDON", 5) == 0) {
+                /* Clear the ROM's mute latch.  Nothing else in the save is
+                 * touched, and the ROM keeps it cleared until it toggles it
+                 * again on its own.  Must be tested before "SND": SND is a
+                 * prefix of SNDON. */
+                con_printf("SNDON m17 %X -> ", dg_ram(0x017));
+                dg_ram_write(0x017, (uint8_t)(dg_ram(0x017) & ~8));
+                con_printf("%X\n", dg_ram(0x017));
+            } else if (strncmp(line, "SND", 3) == 0) {
+                /* M(0x17) bit3 is the ROM's own mute latch (found round 91):
+                 * while it is set the ROM never writes BZ1/R4, so `SND` reads
+                 * active=0 freq=0.0 forever and the unit looks "sound broken".
+                 * It travels inside the NVS save, so one stale save keeps the
+                 * unit silent across reboots until the latch is cleared. */
+                con_printf("SND active=%d freq=%.1f amp=%.4f m17=%X\n",
+                           dg_sound_active(), dg_sound_freq(), dg_sound_amp(),
+                           dg_ram(0x017));
             } else if (strncmp(line, "STATE", 5) == 0) {
                 /* One line with every evolution input, for the PC tool's care
                  * page.  Kept separate from DUMP so old scripts keep working.
@@ -1481,39 +1906,45 @@ static void console_poll(void)
     }
 }
 
+/* One-line description of the card the cursor is on, for the settings row. */
+static void card_row_text(int idx, char *buf, size_t n)
+{
+    dg_card_t c;
+    if (!dg_card_load(idx, &c)) {
+        snprintf(buf, n, "OFF");
+        return;
+    }
+    char nm[DG_CARD_NAME_LEN + 2];
+    dg_card_label(&c, nm, sizeof nm);
+    snprintf(buf, n, "%d %s", idx + 1, nm);
+}
+
 /* caller must hold the LVGL lock */
 static void menu_refresh(void)
 {
     if (!s_menu) return;
-    char buf[20];
+    char buf[32];
 
-    lv_label_set_text(s_menu_val[M_SKIP], SKIP_TEXT[s_skip_idx]);
-
-    if (s_play_reset_armed) {
-        lv_label_set_text(s_menu_val[M_PLAY], "RESET? B");   /* second B wipes */
-    } else {
-        fmt_play_time(buf, sizeof buf, s_pet_sec);
-        lv_label_set_text(s_menu_val[M_PLAY], buf);
-    }
+    /* TIME row mirrors the pending SKIP choice, so the length is visible
+     * without opening the group. */
+    snprintf(buf, sizeof buf, "SKIP %s", SKIP_TEXT[s_skip_idx]);
+    lv_label_set_text(s_menu_val[M_TIME], buf);
 
     /* the trailing '>' is the hint that B opens a sub-list */
     snprintf(buf, sizeof buf, "%s >", rom_name(s_rom_idx));
     lv_label_set_text(s_menu_val[M_ROM], buf);
 
-    lv_label_set_text(s_menu_val[M_SHELL], SHELLS[s_shell].name);
-    snprintf(buf, sizeof buf, "%u%%", (unsigned)s_bright);
-    lv_label_set_text(s_menu_val[M_BRIGHT], buf);
-    snprintf(buf, sizeof buf, "%u%%", (unsigned)s_vol);
-    lv_label_set_text(s_menu_val[M_VOL], buf);
-    if (s_auto_sec == 0) {
-        lv_label_set_text(s_menu_val[M_AUTO], "NEVER");
-    } else if (s_auto_sec < 60) {
-        snprintf(buf, sizeof buf, "%uS", (unsigned)s_auto_sec);
-        lv_label_set_text(s_menu_val[M_AUTO], buf);
+    if (dg_card_count() == 0) {
+        lv_label_set_text(s_menu_val[M_BATTLE], "NO CARD");
     } else {
-        snprintf(buf, sizeof buf, "%uM", (unsigned)(s_auto_sec / 60));
-        lv_label_set_text(s_menu_val[M_AUTO], buf);
+        card_row_text(s_card_sel, buf, sizeof buf);
+        lv_label_set_text(s_menu_val[M_BATTLE], buf);
     }
+
+    lv_label_set_text(s_menu_val[M_APPEAR],
+                      s_style == STYLE_RETAIL ? "C RETAIL >" : "A CLASSIC >");
+    snprintf(buf, sizeof buf, "%u%% >", (unsigned)s_bright);
+    lv_label_set_text(s_menu_val[M_POWER], buf);
 
     for (int i = 0; i < MENU_ROWS; i++) {
         /* yellow bar + dark text for the selected row: at 240 px wide a subtle
@@ -1523,6 +1954,193 @@ static void menu_refresh(void)
         lv_obj_set_style_bg_opa(s_menu_row[i], sel ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
         lv_obj_set_style_text_color(s_menu_row[i], lv_color_hex(0x17202A), 0);
     }
+}
+
+/* ---- grouped settings: TIME / APPEAR / POWER (todo #17) ------------------
+ * One shared panel with at most three rows.  A moves, B changes the value (or
+ * arms / performs the PLAY TIME wipe), C goes back to the first level without
+ * closing the menu.  SKIP TIME is still only consumed by menu_set_open(false),
+ * so leaving this panel with C keeps the number pending. */
+static void apply_shell(void);        /* defined far below */
+
+static void fmt_auto(char *buf, size_t n)
+{
+    if (s_auto_sec == 0) {
+        snprintf(buf, n, "NEVER");
+    } else if (s_auto_sec < 60) {
+        snprintf(buf, n, "%uS", (unsigned)s_auto_sec);
+    } else {
+        snprintf(buf, n, "%uM", (unsigned)(s_auto_sec / 60));
+    }
+}
+
+static const char *sub_title_text(int kind)
+{
+    return kind == SUB_TIME ? "TIME" : (kind == SUB_APPEAR ? "APPEAR" : "POWER");
+}
+
+/* caller must hold the LVGL lock */
+static void menu_sub_refresh(void)
+{
+    char buf[32];
+    s_sub_count = (s_sub_kind == SUB_POWER) ? 3 : 2;
+    lv_label_set_text(s_sub_title, sub_title_text(s_sub_kind));
+
+    for (int i = 0; i < SUB_ROWS; i++) {
+        if (i >= s_sub_count) {
+            lv_obj_add_flag(s_sub_row[i], LV_OBJ_FLAG_HIDDEN);
+            continue;
+        }
+        lv_obj_remove_flag(s_sub_row[i], LV_OBJ_FLAG_HIDDEN);
+        bool sel = (i == s_sub_sel);
+        lv_obj_set_style_bg_color(s_sub_row[i], lv_color_hex(MENU_YELLOW), 0);
+        lv_obj_set_style_bg_opa(s_sub_row[i], sel ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
+        lv_obj_set_style_text_color(s_sub_row[i], lv_color_hex(0x17202A), 0);
+    }
+
+    if (s_sub_kind == SUB_TIME) {
+        lv_label_set_text(s_sub_name[0], "SKIP TIME");
+        lv_label_set_text(s_sub_val[0], SKIP_TEXT[s_skip_idx]);
+        lv_label_set_text(s_sub_name[1], "PLAY TIME");
+        if (s_sub_confirm) {
+            lv_label_set_text(s_sub_val[1], "RESET? B");
+        } else {
+            fmt_play_time(buf, sizeof buf, s_pet_sec);
+            lv_label_set_text(s_sub_val[1], buf);
+        }
+    } else if (s_sub_kind == SUB_APPEAR) {
+        lv_label_set_text(s_sub_name[0], "STYLE");
+        lv_label_set_text(s_sub_val[0], s_style == STYLE_RETAIL ? "C RETAIL" : "A CLASSIC");
+        lv_label_set_text(s_sub_name[1], "SHELL");
+        lv_label_set_text(s_sub_val[1], SHELLS[s_shell].name);
+    } else {
+        lv_label_set_text(s_sub_name[0], "BRIGHT");
+        snprintf(buf, sizeof buf, "%u%%", (unsigned)s_bright);
+        lv_label_set_text(s_sub_val[0], buf);
+        lv_label_set_text(s_sub_name[1], "VOLUME");
+        snprintf(buf, sizeof buf, "%u%%", (unsigned)s_vol);
+        lv_label_set_text(s_sub_val[1], buf);
+        lv_label_set_text(s_sub_name[2], "AUTO OFF");
+        fmt_auto(buf, sizeof buf);
+        lv_label_set_text(s_sub_val[2], buf);
+    }
+}
+
+static void menu_sub_build(lv_obj_t *parent)
+{
+    s_sub = lv_obj_create(parent);
+    lv_obj_set_size(s_sub, 300, 200);
+    lv_obj_align(s_sub, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_style_bg_color(s_sub, lv_color_hex(0xFBF9F0), 0);
+    lv_obj_set_style_bg_opa(s_sub, LV_OPA_90, 0);
+    lv_obj_set_style_border_color(s_sub, lv_color_hex(0x2C3324), 0);
+    lv_obj_set_style_border_width(s_sub, 2, 0);
+    lv_obj_set_style_radius(s_sub, 8, 0);
+    lv_obj_set_style_pad_all(s_sub, 3, 0);
+    lv_obj_set_style_shadow_width(s_sub, 12, 0);
+    lv_obj_set_style_shadow_opa(s_sub, LV_OPA_40, 0);
+    lv_obj_remove_flag(s_sub, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(s_sub, LV_OBJ_FLAG_HIDDEN);
+
+    s_sub_title = lv_label_create(s_sub);
+    lv_label_set_text(s_sub_title, "TIME");
+    lv_obj_set_style_text_color(s_sub_title, lv_color_hex(0x252C1F), 0);
+    lv_obj_align(s_sub_title, LV_ALIGN_TOP_MID, 0, -1);
+
+    for (int i = 0; i < SUB_ROWS; i++) {
+        lv_obj_t *row = lv_obj_create(s_sub);
+        lv_obj_set_size(row, 278, 24);
+        lv_obj_set_pos(row, 8, 36 + i * 30);
+        lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, 0);
+        lv_obj_set_style_border_width(row, 0, 0);
+        lv_obj_set_style_radius(row, 5, 0);
+        lv_obj_set_style_pad_all(row, 2, 0);
+        lv_obj_remove_flag(row, LV_OBJ_FLAG_SCROLLABLE);
+        s_sub_row[i] = row;
+
+        s_sub_name[i] = lv_label_create(row);
+        lv_label_set_text(s_sub_name[i], "-");
+        lv_obj_set_style_text_color(s_sub_name[i], lv_color_hex(0x252C1F), 0);
+        lv_obj_align(s_sub_name[i], LV_ALIGN_LEFT_MID, 2, 0);
+
+        s_sub_val[i] = lv_label_create(row);
+        lv_label_set_text(s_sub_val[i], "-");
+        lv_obj_set_style_text_color(s_sub_val[i], lv_color_hex(0x252C1F), 0);
+        lv_obj_align(s_sub_val[i], LV_ALIGN_RIGHT_MID, -2, 0);
+    }
+}
+
+static void menu_sub_show(int kind)
+{
+    s_sub_kind = kind;
+    s_sub_sel = 0;
+    s_sub_confirm = 0;
+    if (!s_sub) return;
+    if (bsp_lvgl_lock(150)) {
+        s_sub_open = true;
+        menu_sub_refresh();
+        /* hide the first level, otherwise the two translucent panels stack and
+         * the text reads through each other */
+        lv_obj_add_flag(s_menu, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_remove_flag(s_sub, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_invalidate(s_sub);
+        bsp_lvgl_unlock();
+    }
+    ESP_LOGI(TAG, "settings group %s open", sub_title_text(kind));
+}
+
+static void menu_sub_hide(void)
+{
+    s_sub_open = false;
+    s_sub_confirm = 0;
+    if (bsp_lvgl_lock(100)) {
+        lv_obj_add_flag(s_sub, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_remove_flag(s_menu, LV_OBJ_FLAG_HIDDEN);
+        menu_refresh();
+        bsp_lvgl_unlock();
+    }
+}
+
+/* caller must hold the LVGL lock */
+static void menu_sub_act(void)
+{
+    bool shell_changed = false;
+
+    if (s_sub_kind == SUB_TIME) {
+        if (s_sub_sel == 0) {
+            s_skip_idx = (uint8_t)((s_skip_idx + 1) % SKIP_COUNT);
+        } else if (!s_sub_confirm) {
+            s_sub_confirm = 1;            /* first B only arms the wipe */
+        } else {
+            s_pet_sec = 0;
+            s_age_frac = 0;
+            s_age_last_tick = dg_osc1_ticks();
+            age_save(s_rom_idx);
+            s_sub_confirm = 0;
+            ESP_LOGI(TAG, "play time reset to 0");
+        }
+    } else if (s_sub_kind == SUB_APPEAR) {
+        if (s_sub_sel == 0) {
+            s_style = (s_style == STYLE_RETAIL) ? STYLE_CLASSIC : STYLE_RETAIL;
+            s_pic_valid = false;
+            s_icon_stale = true;
+            shell_changed = true;
+        } else {
+            s_shell = (uint8_t)((s_shell + 1) % SHELL_COUNT);
+            shell_changed = true;
+        }
+    } else if (s_sub_sel == 0) {
+        s_bright = next_u8(BRIGHT_STEPS, (int)sizeof BRIGHT_STEPS, s_bright);
+        bsp_display_backlight(s_bright);
+    } else if (s_sub_sel == 1) {
+        s_vol = next_u8(VOL_STEPS, (int)sizeof VOL_STEPS, s_vol);
+        bsp_audio_set_volume(s_vol);
+    } else {
+        s_auto_sec = next_u16(AUTO_STEPS, (int)(sizeof AUTO_STEPS / sizeof AUTO_STEPS[0]), s_auto_sec);
+    }
+
+    if (shell_changed) apply_shell();
+    menu_sub_refresh();
 }
 
 /* Wipes one slot's save blob and its play-time key.  If that slot is the one
@@ -1659,6 +2277,98 @@ static void menu_rom_build(lv_obj_t *parent)
     }
 }
 
+/* How much of the 32 KB LVGL pool is left.  The first card-picker build ran out
+ * of it silently (lv_obj_create() returns NULL instead of failing loudly), which
+ * showed up as a panic the moment the panel was opened -- see menu_card_refresh.
+ * Keeping this line in the log makes the next such problem a one-glance answer. */
+static void lvgl_pool_log(const char *where)
+{
+    lv_mem_monitor_t mon;
+    lv_mem_monitor(&mon);
+    ESP_LOGI(TAG, "lvgl pool %s: total=%u free=%u biggest=%u used=%u%% frag=%u%% max=%u",
+             where, (unsigned)mon.total_size, (unsigned)mon.free_size,
+             (unsigned)mon.free_biggest_size, (unsigned)mon.used_pct,
+             (unsigned)mon.frag_pct, (unsigned)mon.max_used);
+}
+
+/* One label per card, not a row object with two labels inside: the LVGL pool is
+ * 32 KB (CONFIG_LV_MEM_SIZE_KILOBYTES), and the first draft's 25 widgets were
+ * enough to make lv_obj_create() return NULL at build time -- the panel then
+ * looked fine until the first refresh touched a NULL label and the unit
+ * panicked and rebooted on the B press (2026-11-07, seen on the device).
+ * Nine widgets fit comfortably, and every pointer is checked anyway. */
+static void menu_card_refresh(void)
+{
+    if (!s_card_menu) return;
+    char buf[40];
+
+    for (int i = 0; i < CARD_MENU_ROWS; i++) {
+        lv_obj_t *lbl = s_card_lbl[i];
+        dg_card_t c;
+        bool valid;
+        if (!lbl) continue;
+
+        valid = dg_card_load(i, &c);
+        if (valid) {
+            char nm[16];
+            dg_card_label(&c, nm, sizeof nm);
+            snprintf(buf, sizeof buf, "%s%d %-10s %X/%u V%u",
+                     (i == s_card_sel) ? ">" : " ", i + 1, nm,
+                     (unsigned)c.slot, (unsigned)c.effort, (unsigned)c.version + 1);
+        } else {
+            snprintf(buf, sizeof buf, "%s%d --", (i == s_card_sel) ? ">" : " ", i + 1);
+        }
+        lv_label_set_text(lbl, buf);
+        lv_obj_set_style_text_opa(lbl, valid ? LV_OPA_COVER : LV_OPA_40, 0);
+        lv_obj_set_style_bg_color(lbl, lv_color_hex(MENU_YELLOW), 0);
+        lv_obj_set_style_bg_opa(lbl, (i == s_card_sel) ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
+    }
+}
+
+static void menu_card_build(lv_obj_t *parent)
+{
+    s_card_menu = lv_obj_create(parent);
+    if (!s_card_menu) {
+        ESP_LOGE(TAG, "card panel: LVGL pool exhausted, no picker");
+        return;
+    }
+    lv_obj_set_size(s_card_menu, 300, 200);
+    lv_obj_align(s_card_menu, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_style_bg_color(s_card_menu, lv_color_hex(0xFBF9F0), 0);
+    lv_obj_set_style_bg_opa(s_card_menu, LV_OPA_90, 0);
+    lv_obj_set_style_border_color(s_card_menu, lv_color_hex(0x2C3324), 0);
+    lv_obj_set_style_border_width(s_card_menu, 2, 0);
+    lv_obj_set_style_radius(s_card_menu, 8, 0);
+    lv_obj_set_style_pad_all(s_card_menu, 3, 0);
+    lv_obj_set_style_shadow_width(s_card_menu, 12, 0);
+    lv_obj_set_style_shadow_opa(s_card_menu, LV_OPA_40, 0);
+    lv_obj_remove_flag(s_card_menu, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(s_card_menu, LV_OBJ_FLAG_HIDDEN);
+
+    lv_obj_t *title = lv_label_create(s_card_menu);
+    if (title) {
+        lv_label_set_text(title, "BATTLE CARDS  B=GO");
+        lv_obj_set_style_text_color(title, lv_color_hex(0x252C1F), 0);
+        lv_obj_align(title, LV_ALIGN_TOP_MID, 0, -1);
+    }
+
+    s_card_widgets = 0;
+    for (int i = 0; i < CARD_MENU_ROWS; i++) {
+        lv_obj_t *lbl = lv_label_create(s_card_menu);
+        if (!lbl) break;                  /* pool full: show what we have */
+        lv_label_set_text(lbl, "");
+        lv_obj_set_style_text_color(lbl, lv_color_hex(0x252C1F), 0);
+        lv_obj_set_style_pad_hor(lbl, 3, 0);
+        lv_obj_set_pos(lbl, 8, 20 + i * 21);
+        s_card_lbl[i] = lbl;
+        s_card_widgets++;
+    }
+    if (s_card_widgets < CARD_MENU_ROWS) {
+        ESP_LOGW(TAG, "card panel: only %d of %d rows fit the LVGL pool",
+                 s_card_widgets, CARD_MENU_ROWS);
+    }
+}
+
 static void menu_build(lv_obj_t *parent)
 {
     s_menu = lv_obj_create(parent);
@@ -1684,14 +2394,14 @@ static void menu_build(lv_obj_t *parent)
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, -1);
 
     static const char *names[MENU_ROWS] = {
-        "SKIP TIME", "PLAY TIME", "ROM", "SHELL", "BRIGHT", "VOLUME", "AUTO OFF"
+        "TIME", "ROM", "BATTLE", "APPEAR", "POWER"
     };
     for (int i = 0; i < MENU_ROWS; i++) {
         lv_obj_t *row = lv_obj_create(s_menu);
-        /* 20 px rows at 22 px pitch: seven rows now, so each one gets a little
-         * more air than the cramped 18/19 the nine-row panel needed. */
-        lv_obj_set_size(row, 278, 20);
-        lv_obj_set_pos(row, 8, 22 + i * 22);
+        /* Five rows at 30 px pitch: 36..180, comfortably inside 200 px.  The
+         * grouped rows open the shared second level below. */
+        lv_obj_set_size(row, 278, 24);
+        lv_obj_set_pos(row, 8, 36 + i * 30);
         lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, 0);
         lv_obj_set_style_border_width(row, 0, 0);
         lv_obj_set_style_radius(row, 5, 0);
@@ -1714,6 +2424,10 @@ static void menu_build(lv_obj_t *parent)
     /* second level lives on top of the list; it stays hidden until B lands on
      * the ROM row */
     menu_rom_build(parent);
+    /* the offline battle-card picker, same idea, opened from the BATTLE row */
+    menu_card_build(parent);
+    /* shared TIME / APPEAR / POWER list */
+    menu_sub_build(parent);
 }
 
 static void menu_set_open(bool open)
@@ -1721,8 +2435,11 @@ static void menu_set_open(bool open)
     s_menu_open = open;
     if (!open) {
         s_play_reset_armed = false;     /* an armed wipe never survives closing */
+        s_sub_open = false;
+        s_sub_confirm = 0;
         s_rom_menu_open = false;
         s_rom_confirm = 0;
+        s_card_menu_open = false;
     }
     if (bsp_lvgl_lock(100)) {
         if (open) {
@@ -1731,6 +2448,8 @@ static void menu_set_open(bool open)
         } else {
             lv_obj_add_flag(s_menu, LV_OBJ_FLAG_HIDDEN);
             if (s_rom_menu) lv_obj_add_flag(s_rom_menu, LV_OBJ_FLAG_HIDDEN);
+            if (s_card_menu) lv_obj_add_flag(s_card_menu, LV_OBJ_FLAG_HIDDEN);
+            if (s_sub) lv_obj_add_flag(s_sub, LV_OBJ_FLAG_HIDDEN);
         }
         bsp_lvgl_unlock();
     }
@@ -1761,6 +2480,100 @@ static void menu_set_open(bool open)
     if (!open) save_ui_settings();
 }
 
+/* ---- offline card battle: arm + auto-walk --------------------------------
+ * The ROM owns the keypad and only starts talking when *it* decides to put a
+ * frame on the pin, so a card battle means: arm the responder, then tap the keys
+ * a human would tap (A to the battle icon, B to enter, B to start) and steer by
+ * the ROM's own mode/sub instead of counting presses.  Anything the ROM reports
+ * as a blocker (asleep / injured) cancels the walk with a log line rather than
+ * key-mashing into a wall.  Mirrors what tools/dg_link_battle.py does over the
+ * console, minus the PC. */
+static void card_battle_begin(int idx)
+{
+    dg_card_t c;
+    char nm[16];
+
+    if (!dg_card_load(idx, &c)) {
+        ESP_LOGW(TAG, "card %d is empty", idx + 1);
+        return;
+    }
+    dg_card_label(&c, nm, sizeof nm);
+    dg_card_battle_arm(&c);
+    s_walk = 1;
+    s_walk_tries = 0;
+    s_walk_launched = 0;
+    s_walk_next_us = esp_timer_get_time() + 400000;
+    ESP_LOGI(TAG, "card battle: #%d %s slot=%X effort=%u ver=%u",
+             idx + 1, nm, (unsigned)c.slot, (unsigned)c.effort,
+             (unsigned)c.version);
+}
+
+static void card_walk_cancel(const char *why)
+{
+    ESP_LOGW(TAG, "card walk cancelled: %s", why);
+    s_walk = 0;
+    dg_card_battle_disarm();
+}
+
+static void card_walk_tick(void)
+{
+    int64_t now;
+    int mode, sub, sleep, injured;
+
+    if (!s_walk) return;
+    now = esp_timer_get_time();
+    if (now < s_walk_next_us) return;
+    s_walk_next_us = now + WALK_STEP_US;
+
+    if (!s_have_rom) { card_walk_cancel("no ROM loaded"); return; }
+    if (++s_walk_tries > WALK_MAX_TRIES) { card_walk_cancel("out of steps"); return; }
+
+    mode = dg_ram(0x009);
+    sub  = dg_ram(0x00A);
+    sleep = dg_ram(0x033);
+    injured = dg_ram(0x005) & 1;
+
+    if (mode == 5 && sub == 2) {
+        if (injured) { card_walk_cancel("injured (M(0x05) bit0): use the patch icon"); return; }
+        if (sleep) {
+            /* the ROM parks in sub=2 while asleep and never opens the receiver */
+            ESP_LOGI(TAG, "card walk: waking the pet (sleep=%d)", sleep);
+            dg_ram_write(0x033, 0);
+        }
+        if (!s_walk_launched) {
+            ESP_LOGI(TAG, "card walk: battle screen reached, pressing B to start");
+            key_inject(2, 320);
+            s_walk_launched = 1;
+            s_walk = 0;                /* the ROM drives it from here */
+            return;
+        }
+        return;
+    }
+
+    if (mode == 5) {                       /* already on the battle icon */
+        ESP_LOGI(TAG, "card walk: sub=%X, pressing B to enter", sub);
+        key_inject(2, 320);
+        return;
+    }
+
+    ESP_LOGI(TAG, "card walk: mode=%X, pressing A", mode);
+    key_inject(4, 320);
+}
+
+/* Runs the walk, the queued answer, and the clean-up once the fight is over. */
+static void card_battle_service(void)
+{
+    card_walk_tick();
+    dg_card_battle_tick();
+
+    /* Two answers exchanged and the ROM has left the battle screen: the fight is
+     * being animated / already over, nothing else can arrive. */
+    if (dg_card_battle_armed() && !s_walk && s_have_rom &&
+        dg_card_battle_replies() >= 2 && dg_ram(0x009) != 5) {
+        dg_card_battle_disarm();
+    }
+}
+
 static void switch_rom(int idx);   /* defined below */
 static void apply_shell(void);     /* defined below */
 
@@ -1775,6 +2588,61 @@ static void apply_shell(void);     /* defined below */
  * which is why it only died after cycling the colourway for a while. */
 static void menu_key(uint8_t mask)
 {
+    /* ---- second level: TIME / APPEAR / POWER ---------------------------
+     * A walks the rows, B changes the value (or arms / performs the PLAY TIME
+     * wipe), C backs out to the settings list.  Nothing here closes the menu, so
+     * SKIP TIME stays pending until the first level closes. */
+    if (s_sub_open) {
+        if (mask == 1) {
+            menu_sub_hide();
+            return;
+        }
+        if (mask == 4) {
+            s_sub_sel = (s_sub_sel + 1) % s_sub_count;
+            s_sub_confirm = 0;            /* leaving the row cancels the wipe */
+            if (bsp_lvgl_lock(100)) { menu_sub_refresh(); bsp_lvgl_unlock(); }
+            return;
+        }
+        if (mask == 2) {
+            if (bsp_lvgl_lock(150)) { menu_sub_act(); bsp_lvgl_unlock(); }
+        }
+        return;
+    }
+
+    /* ---- second level: the battle-card picker ---------------------------
+     * A walks the eight card slots, B starts the highlighted one (the panel
+     * closes, the card responder arms and the auto-walk takes over), C backs
+     * out to the settings list.  Empty slots are listed but inert. */
+    if (s_card_menu_open) {
+        if (mask == 1) {
+            s_card_menu_open = false;
+            if (bsp_lvgl_lock(100)) {
+                lv_obj_add_flag(s_card_menu, LV_OBJ_FLAG_HIDDEN);
+                lv_obj_remove_flag(s_menu, LV_OBJ_FLAG_HIDDEN);
+                menu_refresh();
+                bsp_lvgl_unlock();
+            }
+            return;
+        }
+        if (mask == 4) {
+            s_card_sel = (s_card_sel + 1) % CARD_MENU_ROWS;
+            if (bsp_lvgl_lock(100)) { menu_card_refresh(); bsp_lvgl_unlock(); }
+            return;
+        }
+        if (mask == 2) {
+            int idx = s_card_sel;
+            dg_card_t probe;
+            bool ok = dg_card_load(idx, &probe);
+            menu_set_open(false);          /* panel away, the ROM gets the keypad */
+            if (ok) {
+                card_battle_begin(idx);
+            } else {
+                ESP_LOGW(TAG, "card %d is empty", idx + 1);
+            }
+        }
+        return;
+    }
+
     /* ---- second level: the ROM slot list -------------------------------
      * A walks all eight slots, B boots the highlighted one, C goes back to the
      * settings list instead of closing everything.  Empty slots are listed
@@ -1847,22 +2715,15 @@ static void menu_key(uint8_t mask)
         s_play_reset_armed = false;       /* walking away cancels a pending wipe */
     } else {                              /* B: change the value / act */
         switch (s_menu_sel) {
-        case M_SKIP:
-            /* only picks the amount; the jump happens when the panel closes */
-            s_skip_idx = (uint8_t)((s_skip_idx + 1) % SKIP_COUNT);
-            break;
-        case M_PLAY:
-            if (!s_play_reset_armed) {
-                s_play_reset_armed = true;      /* first B only arms the wipe */
-            } else {
-                s_pet_sec = 0;
-                s_age_frac = 0;
-                s_age_last_tick = dg_osc1_ticks();
-                age_save(s_rom_idx);
-                s_play_reset_armed = false;
-                ESP_LOGI(TAG, "play time reset to 0");
-            }
-            break;
+        case M_TIME:
+            menu_sub_show(SUB_TIME);
+            return;
+        case M_APPEAR:
+            menu_sub_show(SUB_APPEAR);
+            return;
+        case M_POWER:
+            menu_sub_show(SUB_POWER);
+            return;
         case M_ROM:
             s_rom_sel = (s_rom_idx >= 0) ? s_rom_idx : 0;
             s_rom_confirm = 0;
@@ -1876,21 +2737,43 @@ static void menu_key(uint8_t mask)
                 bsp_lvgl_unlock();
             }
             return;
-        case M_SHELL:
-            s_shell = (uint8_t)((s_shell + 1) % SHELL_COUNT);
-            shell_changed = true;
-            break;
-        case M_BRIGHT:
-            s_bright = next_u8(BRIGHT_STEPS, (int)sizeof BRIGHT_STEPS, s_bright);
-            bsp_display_backlight(s_bright);
-            break;
-        case M_VOL:
-            s_vol = next_u8(VOL_STEPS, (int)sizeof VOL_STEPS, s_vol);
-            bsp_audio_set_volume(s_vol);
-            break;
-        case M_AUTO:
-            s_auto_sec = next_u16(AUTO_STEPS, (int)(sizeof AUTO_STEPS / sizeof AUTO_STEPS[0]), s_auto_sec);
-            break;
+        case M_BATTLE: {
+            if (dg_card_count() == 0) {
+                ESP_LOGW(TAG, "no battle cards stored (CARDW over the console)");
+                break;
+            }
+            /* Park the pet before the picker opens.  The 2026-11-07 crash ate
+             * the current 60 s autosave window, and "打开面板就没了进度" is a
+             * much worse bug than a 100 ms flash write. */
+            if (s_have_rom) save_slot(s_rom_idx);
+            /* land the cursor on the first populated card, not on row 1 */
+            s_card_sel = 0;
+            while (s_card_sel < CARD_MENU_ROWS && !dg_card_load(s_card_sel, NULL))
+                s_card_sel++;
+            if (s_card_sel >= CARD_MENU_ROWS) s_card_sel = 0;
+            /* Flip the flag inside the lock and only after the panel really
+             * exists: an earlier draft set it before locking, so one timed-out
+             * lock left the picker "open" with nothing on screen and every
+             * later key press pointing at an invisible panel. */
+            if (s_card_menu && bsp_lvgl_lock(200)) {
+                lvgl_pool_log("card picker");
+                s_card_menu_open = true;
+                menu_card_refresh();
+                lv_obj_add_flag(s_menu, LV_OBJ_FLAG_HIDDEN);
+                lv_obj_remove_flag(s_card_menu, LV_OBJ_FLAG_HIDDEN);
+                /* Same size, same place, one hidden and one shown: ask LVGL for
+                 * a repaint explicitly, otherwise the simulator keeps showing
+                 * the panel that was just hidden. */
+                lv_obj_invalidate(s_card_menu);
+                bsp_lvgl_unlock();
+                ESP_LOGI(TAG, "card picker open (sel=%d, %d rows)",
+                         s_card_sel, s_card_widgets);
+            } else {
+                ESP_LOGW(TAG, "card picker unavailable (menu=%p, lock failed)",
+                         (void *)s_card_menu);
+            }
+            return;
+        }
         default:
             break;                               /* no EXIT row: C closes */
         }
@@ -1920,6 +2803,9 @@ static void menu_key(uint8_t mask)
 static lv_obj_t *s_ver_lbl;
 static lv_obj_t *s_pct_lbl;
 static lv_obj_t *s_scr, *s_rim, *s_well;
+/* Style C has no furniture objects left: the frame lines, the strap lug and the
+ * two bars were all rejected one by one.  What remains is the brick texture on
+ * the shell and the backdrop in the glass — both drawn, not widgeted. */
 static int64_t s_batt_next_us;
 static int s_soc = -1;
 
@@ -1930,14 +2816,34 @@ static void apply_shell(void)
 {
     if (!s_scr) return;
     const shell_t *sh = &SHELLS[s_shell];
+    const int retail = (s_style == STYLE_RETAIL);
+    /* Style C: the chosen colourway becomes the BIG frame, so the bezel ring is
+     * the same colour as the body (no separate red ring) and the recess stays
+     * dark.  The HUD ink flips to stay readable on light shells. */
+    uint32_t rim = retail ? sh->body : sh->rim;
+    uint32_t hi = retail ? sh->hi : sh->hi;
+    /* Style C: no dark recess around the glass either — the panel sits flush on
+     * the wall, only the bezel ring (same colour as the body) frames it. */
+    uint32_t well = retail ? sh->body : sh->well;
+    uint32_t hud = retail ? (((sh->body >> 16) & 0xFF) + ((sh->body >> 8) & 0xFF) + (sh->body & 0xFF) > 0x180
+                             ? 0x2A2A26 : 0xEDEDE6) : sh->hud;
+
     lv_obj_set_style_bg_color(s_scr, lv_color_hex(sh->body), 0);
-    if (s_rim) {
-        lv_obj_set_style_bg_color(s_rim, lv_color_hex(sh->rim), 0);
-        lv_obj_set_style_border_color(s_rim, lv_color_hex(sh->hi), 0);
+    /* Brick texture: a 32x16 transparent mortar tile tiled behind everything, so
+     * every colourway gets the stone-course look without shipping one image per
+     * colour.  Style A clears it. */
+    if (s_scr) {
+        lv_obj_set_style_bg_image_src(s_scr, retail ? (const void *)&dg_brick : NULL, 0);
+        lv_obj_set_style_bg_image_tiled(s_scr, retail ? true : false, 0);
     }
-    if (s_well) lv_obj_set_style_bg_color(s_well, lv_color_hex(sh->well), 0);
-    if (s_ver_lbl) lv_obj_set_style_text_color(s_ver_lbl, lv_color_hex(sh->hud), 0);
-    if (s_pct_lbl) lv_obj_set_style_text_color(s_pct_lbl, lv_color_hex(sh->hud), 0);
+    if (s_rim) {
+        lv_obj_set_style_bg_color(s_rim, lv_color_hex(rim), 0);
+        lv_obj_set_style_border_color(s_rim, lv_color_hex(hi), 0);
+    }
+    if (s_well) lv_obj_set_style_bg_color(s_well, lv_color_hex(well), 0);
+    if (s_ver_lbl) lv_obj_set_style_text_color(s_ver_lbl, lv_color_hex(hud), 0);
+    if (s_pct_lbl) lv_obj_set_style_text_color(s_pct_lbl, lv_color_hex(hud), 0);
+
 }
 
 static void battery_ui_build(lv_obj_t *scr)
@@ -2217,7 +3123,9 @@ static void dg_task(void *arg)
         uint32_t tick_target = dg_osc1_ticks() + TICKS_PER_FRAME;
         int guard = 0;
         while ((int32_t)(dg_osc1_ticks() - tick_target) < 0 && guard++ < STEP_GUARD) {
+            uint32_t t_link = dg_osc1_ticks();
             dg_step();
+            dglink_tick(&g_dglink, dg_osc1_ticks() - t_link);
         }
         ESP_LOGI(TAG, "first frame (%d ticks, fastmode=%d) took %lld us",
                  TICKS_PER_FRAME, dg_cpu_fast_mode(), (long long)(esp_timer_get_time() - t0));
@@ -2237,9 +3145,27 @@ static void dg_task(void *arg)
             uint32_t tick_target = dg_osc1_ticks() + TICKS_PER_FRAME;
             int guard = 0;
             while ((int32_t)(dg_osc1_ticks() - tick_target) < 0 && guard++ < STEP_GUARD) {
+                uint32_t t_link = dg_osc1_ticks();
                 dg_step();
+                dglink_tick(&g_dglink, dg_osc1_ticks() - t_link);
             }
             age_tick();          /* hatch detection + 养育总时间 */
+        }
+
+        /* --- ROM mute latch, checked once per loaded save ----------------
+         * M(0x17) bit3 is the ROM's own mute switch (found round 91).  A stale
+         * save could boot the unit permanently dumb, so clear it once right
+         * after a save is loaded.  Deliberately NOT every frame any more: since
+         * todo #16 a long DOWN press toggles that latch on purpose, and a
+         * per-frame watchdog would undo the user's choice immediately. */
+        if (s_have_rom && !s_mute_checked) {
+            s_mute_checked = true;
+            if (dg_ram(0x017) & 8) {
+                dg_ram_write(0x017, (uint8_t)(dg_ram(0x017) & ~8));
+                if (s_mute_fixes < 8) {
+                    ESP_LOGW(TAG, "cleared stale ROM mute latch M(0x17) (#%d)", ++s_mute_fixes);
+                }
+            }
         }
 
         /* Forward keys. The ROM samples K0 at ~2 Hz and needs the key held for
@@ -2311,6 +3237,20 @@ static void dg_task(void *arg)
                 continue;
             }
 
+            /* long-hold A is the clock-screen A+C gesture (todo #16); the press
+             * itself still goes to the ROM below, so the hour/minute may tick
+             * once before the combo is injected */
+            if (e.mask == 4) {
+                if (e.down) {
+                    s_a_down = true;
+                    s_a_armed = true;
+                    s_a_press_us = now_us;
+                } else {
+                    s_a_down = false;
+                    s_a_armed = false;
+                }
+            }
+
             if (e.down) {
                 /* A new press supersedes any deferred release: if it is a
                  * different key, let the old one go now; if it is the same
@@ -2354,13 +3294,99 @@ static void dg_task(void *arg)
             menu_set_open(true);
         }
 
+        /* Hold A in the clock screen -> inject A+C, which is how the real unit
+         * enters the time-set state (needs ~3 s of combo, verified on hardware).
+         * Strictly `mode==1 && sub==0`: sub==0 is the clock *display*, sub==1 and
+         * up are the time-set fields, where a held A is the ROM's own
+         * fast-increment.  Without the sub gate a long A there injected A+C on
+         * top of the repeat, which showed up as "hour jumps 3 then freezes ~2 s"
+         * (1.2 s to trigger + the 3.2 s deadline).  Elsewhere A stays a plain key. */
+        if (s_a_down && s_a_armed && !s_menu_open && !s_screen_off &&
+            dg_ram(0x009) == 1 && dg_ram(0x00A) == 0 &&
+            (esp_timer_get_time() - s_a_press_us) >= AC_HOLD_US) {
+            s_a_armed = false;
+            rom_key(4, 0);                 /* drop the A edge first */
+            s_key_pending = 0;
+            s_key_release_at = 0;
+            if (s_have_rom) {
+                dg_set_button(5, 1);
+                s_ac_active = true;
+                s_ac_sub_base = dg_ram(0x00A);
+                s_ac_until_us = esp_timer_get_time() + AC_INJECT_US;
+                ESP_LOGI(TAG, "A+C injected from long A (clock screen), sub=%X",
+                         s_ac_sub_base);
+            }
+        }
+        /* Todo #20: let go the moment the ROM shows it took the combo, instead
+         * of pinning A+C down for the whole 3.2 s window -- the tail of that
+         * window used to swallow every key press.  The deadline stays as the
+         * fallback for "ROM ignored us". */
+        if (s_ac_active) {
+            uint8_t sub_now = s_have_rom ? dg_ram(0x00A) : s_ac_sub_base;
+            bool landed = (sub_now != s_ac_sub_base);
+            if (landed || esp_timer_get_time() >= s_ac_until_us) {
+                int64_t started = s_ac_until_us - AC_INJECT_US;
+                long long held_ms = (long long)((esp_timer_get_time() - started) / 1000);
+                s_ac_last_ms = (int32_t)held_ms;
+                dg_set_button(5, 0);
+                s_ac_active = false;
+                ESP_LOGI(TAG, "A+C released (%s, sub %X->%X, held %lld ms)",
+                         landed ? "sub changed" : "deadline",
+                         s_ac_sub_base, sub_now, held_ms);
+            }
+        }
+
         if (!s_menu_open) console_poll();
+
+        /* release a console-injected key once its hold time is up */
+        if (s_inj_mask && (int32_t)(dg_osc1_ticks() - s_inj_until) >= 0) {
+            if (s_have_rom) dg_set_button(s_inj_mask, 0);
+            s_inj_mask = 0;
+        }
+
+        /* frames the ROM has just finished putting on the D-Link pin.
+         * Wired battles only: the PC relays these to the peer over USB and
+         * pushes the peer's answer back with LINKFRAME.  The ESP-NOW radio
+         * layer was removed in round 91 -- see HANDOFF. */
+        {
+            uint16_t f;
+            while (dglink_take_tx(&g_dglink, &f)) {
+                s_link_rx++;
+                if (s_link_log) con_printf("LX %u %04X\n", (unsigned)s_link_rx, (unsigned)f);
+                /* Offline card mode: when a card is armed it answers the ROM
+                 * right here, so a battle needs no PC at all (G2 / M3). */
+                dg_card_battle_feed(f);
+            }
+        }
+        /* auto-walk into a card battle + send a queued answer + tidy up */
+        card_battle_service();
 
         /* idle timeout -> backlight off; any key brings it back */
         if (!s_screen_off && s_auto_sec > 0 &&
             (esp_timer_get_time() - s_last_key_us) >= (int64_t)s_auto_sec * 1000000) {
             ESP_LOGI(TAG, "auto screen off after %us", (unsigned)s_auto_sec);
             screen_set(true);
+        }
+
+        /* battle finished -> persist the score, but not on the same frame.
+         * With the ESP-NOW radio up, a flash write while frames are still in
+         * flight wedged the unit and rebooted it a few seconds later; waiting
+         * for the line to go quiet keeps the counter and the radio both alive. */
+        if (s_have_rom) {
+            uint8_t bouts_now = (uint8_t)dg_ram(0x099);
+            if (!s_bouts_valid) {
+                s_bouts_seen = bouts_now;
+                s_bouts_valid = true;
+            } else if (bouts_now != s_bouts_seen) {
+                ESP_LOGI(TAG, "battle counter %u -> %u, saving shortly",
+                         (unsigned)s_bouts_seen, (unsigned)bouts_now);
+                s_bouts_seen = bouts_now;
+                s_bouts_save_at = esp_timer_get_time() + 1500000;   /* 1.5 s */
+            }
+        }
+        if (s_bouts_save_at && esp_timer_get_time() >= s_bouts_save_at) {
+            s_bouts_save_at = 0;
+            save_slot(s_rom_idx);
         }
 
         /* rolling autosave: the hardware power key cuts power silently */
@@ -2402,6 +3428,20 @@ static void dg_task(void *arg)
             } else {
                 ESP_LOGI(TAG, "alive frame=%u (no rom)", s_frames);
             }
+#ifdef DG_SIM_UART0_INPUT
+            {
+                uint32_t free_now = heap_caps_get_free_size(MALLOC_CAP_8BIT);
+                if (free_now < s_diag_heap_min) s_diag_heap_min = free_now;
+                esp_rom_printf("DIAG frame=%u redraw=%u avg_us=%u max_us=%u "
+                               "free=%u largest=%u minfree=%u\n",
+                               (unsigned)s_frames, (unsigned)s_diag_redraws,
+                               (unsigned)(s_diag_redraws ? s_diag_render_us / s_diag_redraws : 0),
+                               (unsigned)s_diag_render_max,
+                               (unsigned)free_now,
+                               (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT),
+                               (unsigned)s_diag_heap_min);
+            }
+#endif
         }
     }
 }
@@ -2446,15 +3486,30 @@ esp_err_t digimon_app_start(void)
     rom_table_load();
     load_saved_rom();
     rom_crc_init();
+    dg_cards_init();          /* offline battle cards, before the menu exists */
     load_ui_settings();
     s_last_key_us = esp_timer_get_time();
 
+#ifdef DG_SIM_UART0_INPUT
+    esp_rom_printf("DIAG prealloc request=%u free=%u largest=%u\n",
+                   (unsigned)(DG_GLASS_W * DG_GLASS_H * sizeof(uint16_t)),
+                   (unsigned)heap_caps_get_free_size(MALLOC_CAP_8BIT),
+                   (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
+#endif
     s_canvas_buf = heap_caps_malloc(DG_GLASS_W * DG_GLASS_H * sizeof(uint16_t), MALLOC_CAP_8BIT);
     if (!s_canvas_buf) {
         ESP_LOGE(TAG, "no memory for glass canvas (%u bytes)",
                  (unsigned)(DG_GLASS_W * DG_GLASS_H * sizeof(uint16_t)));
         return ESP_ERR_NO_MEM;
     }
+#ifdef DG_SIM_UART0_INPUT
+    s_diag_heap_min = heap_caps_get_free_size(MALLOC_CAP_8BIT);
+    esp_rom_printf("DIAG alloc canvas=%u pitch=%d glass=%dx%d free=%u largest=%u\n",
+                   (unsigned)(DG_GLASS_W * DG_GLASS_H * sizeof(uint16_t)), DG_PITCH,
+                   DG_GLASS_W, DG_GLASS_H,
+                   (unsigned)heap_caps_get_free_size(MALLOC_CAP_8BIT),
+                   (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
+#endif
     for (int i = 0; i < DG_GLASS_W * DG_GLASS_H; i++) {
         s_canvas_buf[i] = GLASS_TONE[DG_LCD_TONE][0];
     }
@@ -2488,6 +3543,7 @@ esp_err_t digimon_app_start(void)
 
     if (bsp_lvgl_lock(1000)) {
         build_ui();               /* also paints NO ROM vs. the HUD tag */
+        lvgl_pool_log("after build_ui");
         bsp_lvgl_unlock();
     }
     bsp_display_backlight(s_bright);

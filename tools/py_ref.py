@@ -8,7 +8,7 @@ ROOT = os.path.dirname(HERE)
 sys.path.insert(0, os.path.join(ROOT, "ref"))
 from cores.E0C6200 import E0C6200  # noqa: E402
 
-ROM = r"<home> sth\tama dg roms\digimon\digimon.bin"
+ROM = r"<home>\Desktop\dsh sth\tama dg roms\digimon\digimon.bin"
 
 
 class Bus:

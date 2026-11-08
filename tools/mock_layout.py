@@ -6,9 +6,9 @@
 import os
 from PIL import Image, ImageDraw
 
-ICONS = r".\docs\icons"
-HDR = r".\main\core\digimon_icons.h"
-FRAME = r"<home>"
+ICONS = r"<home>\digimon-passport\docs\icons"
+HDR = r"<home>\digimon-passport\firmware\digimon-passport\main\core\digimon_icons.h"
+FRAME = r"<home>\AppData\Local\Temp\frame.txt"
 
 NAMES = ["stat", "virus", "medic", "battle", "poop", "light", "patch", "call"]
 

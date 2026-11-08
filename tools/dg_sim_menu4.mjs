@@ -10,8 +10,7 @@ import { deflateSync } from 'node:zlib';
 import { pathToFileURL } from 'node:url';
 import path from 'node:path';
 
-/* 模拟器仓库：设 PASSPORT_SIM 指向 FoloToy-Passport-Simulator 的检出目录 */
-const SIM = process.env.PASSPORT_SIM || './passport-sim';
+const SIM = '<home>/passport-sim/FoloToy-Passport-Simulator-main';
 const { initSync, WasmEmulator } = await import(pathToFileURL(path.join(SIM, 'public/wasm/pkg/esp_emu.js')).href);
 const { AiPassportBoard } = await import(pathToFileURL(path.join(SIM, 'public/wasm/ai-passport-board.js')).href);
 

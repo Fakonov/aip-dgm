@@ -12,7 +12,7 @@ Also rebuilds a comparison sheet.
 import os
 from PIL import Image, ImageDraw, ImageFilter
 
-ICONS = r".\docs\icons"
+ICONS = r"<home>\digimon-passport\docs\icons"
 NAMES = ["stat", "virus", "medic", "battle", "poop", "light", "patch", "call"]
 S = 128
 

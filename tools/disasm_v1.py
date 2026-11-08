@@ -10,7 +10,7 @@ usage: python tools/disasm_v1.py ROM.bin START END
 import re
 import sys
 
-CORE = r".\ref\cores\E0C6200.py"
+CORE = r"<home>\digimon-passport\ref\cores\E0C6200.py"
 
 # handler name -> (mnemonic template, operand kind)
 #   {i}  4-bit immediate, {l} 8-bit, {s} 8-bit step (page-local target),

@@ -8,9 +8,9 @@ then trim and save with alpha.
 import os, re, subprocess, sys
 from PIL import Image
 
-SVG = r"<home>"
+SVG = r"<home>\AppData\Local\Temp\brickemupy\BrickEmuPy-main\assets\DigimonV1J.svg"
 EDGE = r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
-OUT = r".\docs\icons"
+OUT = r"<home>\digimon-passport\docs\icons"
 TMP = os.path.join(OUT, "_tmp")
 
 NAMES = {

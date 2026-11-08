@@ -9,9 +9,9 @@
 import re, os
 from PIL import Image, ImageDraw
 
-SRC = r".\main\core\digimon_icons.h"
+SRC = r"<home>\digimon-passport\firmware\digimon-passport\main\core\digimon_icons.h"
 DST = SRC
-PREVIEW = r".\docs\sim-test\icons_preview.png"
+PREVIEW = r"<home>\digimon-passport\docs\sim-test\icons_preview.png"
 BG_OLD = 0xEF5D
 BG_NEW = 0xE75B   # RGB565 of the #E8E8E8 UI background
 INK = 0x1082

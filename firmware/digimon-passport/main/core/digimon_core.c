@@ -213,6 +213,7 @@ static void dg_process_timer(dg_cpu *c);
 static void dg_clock_osc1(dg_cpu *c);
 static void dg_pin_handler(dg_cpu *c, int port, uint8_t mask, int level);
 static void dg_init_registers(dg_cpu *c);
+static void (*g_link_hook)(int level);
 
 #define DG_OP(name) static DG_IRAM int dg_op_##name(dg_cpu *c, uint16_t op)
 
@@ -1030,7 +1031,12 @@ static void dg_io_set(dg_cpu *c, int addr, int value)
 
     case 0xF60: c->PLATCH[PORT_P0] = (uint8_t)value; break;
     case 0xF61: c->PLATCH[PORT_P1] = (uint8_t)value; break;
-    case 0xF62: c->PLATCH[PORT_P2] = (uint8_t)value; break;
+    case 0xF62:
+        c->PLATCH[PORT_P2] = (uint8_t)value;
+        if (g_link_hook) {
+            g_link_hook(value);
+        }
+        break;
     case 0xF63: c->PLATCH[PORT_P3] = (uint8_t)value; break;
 
     case 0xF70: c->CTRL_OSC = (uint8_t)value; break;
@@ -2556,6 +2562,29 @@ void dg_set_button(uint8_t mask, int pressed)
     dg_pin_handler(&g_cpu, PORT_K0, mask, pressed ? 0 : -1);
 }
 
+/* ---------------------------------------------------------------- link -- */
+
+static int g_link_level = -1;
+
+void dg_link_drive(int level)
+{
+    if (level == g_link_level) {
+        return;
+    }
+    g_link_level = level;
+    dg_pin_handler(&g_cpu, PORT_P2, 1, level);
+}
+
+int dg_link_latch(void)
+{
+    return (int)(g_cpu.PLATCH[PORT_P2] & 1);
+}
+
+void dg_link_set_hook(void (*on_latch)(int level))
+{
+    g_link_hook = on_latch;
+}
+
 /* debugging helpers (not used by the test driver, handy in firmware) */
 uint16_t dg_npc(void) { return (uint16_t)(g_cpu.NPC & 0x1F00); }
 uint16_t dg_sp(void)  { return (uint16_t)g_cpu.SP; }
@@ -2600,6 +2629,11 @@ void dg_set_osc1_speed(int mult)
     if (mult < 1) mult = 1;
     if (mult > 16) mult = 16;
     g_cpu.osc1_div = OSC1_DIV_FX * mult;
+}
+
+int dg_dbg_k0(void)
+{
+    return dg_port_read(&g_cpu, PORT_K0);
 }
 
 int dg_get_osc1_speed(void)

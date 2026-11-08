@@ -153,15 +153,8 @@ static void sha256_hex(const uint8_t hash[32], char out[65])
 #define STEP_STRIDE 50000u
 #define CHECKPOINTS (TOTAL_STEPS / STEP_STRIDE)
 
-/* ROM 不在本仓库里（Bandai 版权）。按以下顺序找：argv[2] > $DG_ROM > ./roms/digimon.bin */
-static const char *k_rom_path = "roms/digimon.bin";
-
-static void resolve_rom_path(int argc, char **argv)
-{
-    const char *env = getenv("DG_ROM");
-    if (argc > 2)        k_rom_path = argv[2];
-    else if (env)        k_rom_path = env;
-}
+static const char *k_rom_path =
+    "<home>\\Desktop\\dsh sth\\tama dg roms\\digimon\\digimon.bin";
 
 static const char *k_pc_trace_sha =
     "f42d1802a54def230c48e8af9e54fb2a8d49612d8bc2e13ddcb7929270ef5f6f";
@@ -236,7 +229,6 @@ static uint8_t *load_rom(const char *path, uint32_t *out_len)
 
 int main(int argc, char **argv)
 {
-    resolve_rom_path(argc, argv);
     uint8_t *rom;
     uint32_t rom_len = 0;
     uint32_t i;

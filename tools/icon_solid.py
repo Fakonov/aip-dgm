@@ -7,7 +7,7 @@ part of the solid shape.  (The earlier BFS version crashed the interpreter.)
 import os
 from PIL import Image, ImageDraw
 
-ICONS = r".\docs\icons"
+ICONS = r"<home>\digimon-passport\docs\icons"
 NAMES = ["stat", "virus", "medic", "battle", "poop", "light", "patch", "call"]
 S = 128
 

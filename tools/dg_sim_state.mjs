@@ -9,8 +9,7 @@ import { readFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import path from 'node:path';
 
-/* 模拟器仓库：设 PASSPORT_SIM 指向 FoloToy-Passport-Simulator 的检出目录 */
-const SIM = process.env.PASSPORT_SIM || './passport-sim';
+const SIM = '<home>/passport-sim/FoloToy-Passport-Simulator-main';
 const { initSync, WasmEmulator } = await import(pathToFileURL(path.join(SIM, 'public/wasm/pkg/esp_emu.js')).href);
 const { AiPassportBoard } = await import(pathToFileURL(path.join(SIM, 'public/wasm/ai-passport-board.js')).href);
 
@@ -56,6 +55,34 @@ function uartSend(text) {
 runUntil(8);                       /* boot, scan roms, restore save */
 console.log('booted, console lines so far:', lines.length);
 
+/* Optional "live" pass: set the ROM clock and let the egg hatch, so STATE and
+ * DUMP carry real stage/next numbers instead of the all-zero clock page. */
+if (process.argv[3] === 'live') {
+  function press(name, hold = 0.4, gap = 0.4) {
+    board.setButton(name, true);
+    runUntil(now() + hold);
+    board.setButton(name, false);
+    runUntil(now() + gap);
+  }
+  await press('DOWN', 0.5, 0.5);
+  await press('UP', 0.5, 0.5);
+  await press('DOWN', 0.5, 0.5);
+  await press('OK', 0.5, 0.6);
+  await press('UP', 0.5, 0.5);
+  await press('OK', 0.5, 0.5);
+  await press('DOWN', 0.5, 0.6);
+  console.log('clock set');
+  for (let i = 0; i < 20; i++) {
+    runUntil(now() + 60);
+    const before = lines.length;
+    uartSend('DUMP\n');
+    runUntil(now() + 0.8);
+    const got = lines.slice(before).find((l) => /^DUMP slot=/.test(l));
+    if (got) console.log('  poll ' + (i + 1) + ': ' + got.slice(0, 80));
+    if (got && !/^DUMP slot=0 /.test(got)) break;
+  }
+}
+
 for (const cmd of ['ROMINFO', 'STATE', 'AGES', 'RAM', 'DUMP', 'PET']) {
   const before = lines.length;
   uartSend(cmd + '\n');
@@ -64,4 +91,11 @@ for (const cmd of ['ROMINFO', 'STATE', 'AGES', 'RAM', 'DUMP', 'PET']) {
     /^(STATE|AGES|RAM |RAMEND|DUMP|RAW|ROMSLOT|ROMSLOTS|ROMCUR|pet )/.test(l));
   console.log(`\n=== ${cmd} :: ${got.length ? 'REPLY' : 'NO REPLY'} ===`);
   for (const l of got.slice(0, 6)) console.log('  ' + l);
+}
+
+/* Pitch-7 diagnostic build prints DIAG lines at boot and every 250 frames. */
+const diag = lines.filter((l) => /^DIAG /.test(l));
+if (diag.length) {
+  console.log('\n=== DIAG ===');
+  for (const l of diag.slice(-8)) console.log('  ' + l);
 }

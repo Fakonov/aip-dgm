@@ -8,25 +8,36 @@
 |---|---|---|---|
 | [BrickEmuPy](https://github.com/azya52/BrickEmuPy) | E0C6200 参考实现（Python） | **CC0-1.0** | `firmware/.../core/digimon_core.c` 与 `src/digimon_core.c` 是它的 C99 移植。仓库根目录的 `LICENSE` 文件即 CC0 1.0 全文（2026-11 核实） |
 | [FoloToy AI Passport](https://github.com/FoloToy) | 硬件抽象层 `components/bsp`、应用骨架 | MIT | 见上游 `LICENSE` |
-| [MAME](https://github.com/mamedev/mame) | `hh_e0c6200.cpp` 与 `digimon.svg` 仅作**行为与版式参考** | GPL-2.0 / BSD-3-Clause | 未复制其代码或数据；段映射表由参考 SVG 逆向生成（`tools/gen_segmap.py`） |
+| [MAME](https://github.com/mamedev/mame) | `hh_e0c6200.cpp` 与 `digimon.svg` 仅作**行为与版式参考** | GPL-2.0 / BSD-3-Clause | 未复制其代码或数据；段映射表由参考 SVG 逆向生成 |
 | Espressif ESP-IDF | 构建系统与驱动 | Apache-2.0 | 作为依赖引入，未修改 |
 
 > 早期版本的仓库说明把 BrickEmuPy 写成 GPL-3.0，是错的。核对上游 `LICENSE` 后确认为
 > CC0 1.0，因此本项目的移植不构成 GPL 传染，可以 MIT 分发。
 
+## 协议研究参考
+
+对战部分（有线的 D-Link 波形、离线卡片的帧格式）参考了下面这些公开分析，
+**没有**复制其代码：
+
+| 来源 | 用途 |
+|---|---|
+| [botamochi · D-Link 帧格式与波形](http://botamochi.github.io/articles/analysis/dlink.html) | 电气层（开漏、空闲上拉）、帧位序 |
+| [botamochi · 初代通信解析](http://botamochi.github.io/articles/analysis/origin.html) | 两帧内容、胜负判定、高 8 位取反校验 |
+| [DMComm · Original battles](https://dmcomm.github.io/orig_battle/) | `slot` / `effort` / `version` 的取值范围 |
+
 ## 不随仓库分发的素材
 
 | 内容 | 原因 |
 |---|---|
-| `roms/*.bin`（V1/V2/V3 固件镜像） | Bandai 版权作品。用你自己的镜像，见 `roms/README.md` |
-| 《V-Pet Version 1-5》说明书扫描页 | 版权归原出版方。`tools/digimon_studio.html` 的公开版**不含**这些图；`tools/cut_evo_cards.py` 只是处理脚本，输入需你自备 |
+| `roms/*.bin`（V1/V2/V3/V4 固件镜像） | Bandai 版权作品。用你自己的镜像，见 `roms/README.md` |
+| 《V-Pet Version 1-5》说明书扫描页 | 版权归原出版方。`tools/digimon_studio.html` 的公开版**不含**这些图（`tools/strip_studio_images.py` 负责剔除）；`tools/cut_evo_cards.py` 只是处理脚本，输入需你自备 |
 | 数码兽立绘 / 名称 / 商标 | 归 Bandai / 东映所有。本项目仅作个人向的硬件移植与研究 |
 
-## 关于 ROM 研究数据
+## 关于逆向研究数据
 
-仓库里的 `tools/ref-disasm/`（RAM 图、函数表、14112 组进化判定结果）是从**用户自己的
-镜像**反汇编得到的**观测数据**，不含原镜像字节。它记录的是"这个程序怎么行为"，
-不是程序本身。
+仓库里的规则表（`tools/ref-disasm/`、`tools/_evo_tables_generated.js` 以及
+`tools/gen_evo_rules.py` 的产出）是从**用户自己的镜像**跑出来的**观测数据**，
+不含原镜像字节。它记录的是"这个程序怎么行为"，不是程序本身。
 
 ## 商标
 

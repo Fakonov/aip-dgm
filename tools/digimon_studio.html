@@ -165,6 +165,49 @@ pre{max-width:100%}
   border:2.5px solid var(--card,#3a3f36);background:#fbf9ef;box-shadow:0 2px 0 rgba(30,36,24,.15);
   position:relative;transition:transform .12s ease}
 .evocard img{width:44px;height:44px;border-radius:7px;display:block;flex:0 0 auto;background:#e8e3d2}
+
+/* ---- battle page (round 91 v3) ---- */
+.bt-lead{font-size:12px;line-height:1.7;opacity:.85;margin:0 0 14px}
+.bt-tabs{display:flex;gap:8px;margin:0 0 16px;flex-wrap:wrap}
+.bt-tab{flex:1 1 200px;text-align:left;display:flex;flex-direction:column;gap:3px;cursor:pointer;
+  padding:10px 12px;border-radius:12px;border:1px solid #d8d2c0;background:#fbf9f0;color:inherit}
+.bt-tab b{font-size:13.5px}
+.bt-tab span{font-size:11px;opacity:.7;line-height:1.5}
+.bt-tab.on{border-color:#e8873f;box-shadow:0 0 0 3px rgba(232,135,63,.18);background:#fff6ec}
+.bt-shelf{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+.bt-slot{display:flex;flex-direction:column;gap:2px;padding:8px 10px;border-radius:11px;cursor:pointer;
+  border:1px solid #ded8c6;background:#fbf9f0}
+.bt-slot:hover{border-color:#c9c2ac}
+.bt-slot.on{border-color:#e8873f;background:#fff6ec}
+.bt-slot .n{font-size:11px;opacity:.55;letter-spacing:.06em}
+.bt-slot .nm{font-size:12.5px;font-weight:600;line-height:1.3}
+.bt-slot .sub{font-size:10.5px;opacity:.65;font-family:ui-monospace,Consolas,monospace}
+.bt-slot.empty .nm{opacity:.45;font-weight:400}
+.bt-step{margin:0 0 16px}
+.bt-step-h{font-size:12px;font-weight:700;letter-spacing:.04em;opacity:.65;margin:0 0 8px}
+.bt-modes{display:flex;gap:10px;flex-wrap:wrap}
+.bt-mode{flex:1 1 240px;text-align:left;display:flex;flex-direction:column;gap:5px;cursor:pointer;
+  padding:11px 13px;border-radius:12px;border:2px solid #d8d2c0;background:#fbf9ef;color:inherit;font:inherit}
+.bt-mode b{font-size:14px}
+.bt-mode span{font-size:11.5px;line-height:1.55;opacity:.75}
+.bt-mode.on{border-color:#e8873f;box-shadow:0 0 0 3px rgba(232,135,63,.18);background:#fff6ec}
+.bt-roster{display:grid;grid-template-columns:repeat(auto-fill,minmax(134px,1fr));gap:8px}
+.bt-pick{display:flex;gap:9px;align-items:center;padding:8px;border-radius:11px;cursor:pointer;
+  border:2px solid transparent;background:#f6f3e8}
+.bt-pick:hover{border-color:#c9c2ac}
+.bt-pick.on{border-color:#e8873f;background:#fff6ec}
+.bt-pick img{width:40px;height:40px;border-radius:8px;background:#e8e3d2;flex:0 0 auto;display:block}
+.bt-pick .nm{font-size:12.5px;font-weight:600;line-height:1.25}
+.bt-pick .en{font-size:10.5px;opacity:.6}
+.bt-pick-info{font-size:12px;margin:9px 0 0;opacity:.85}
+.bt-state{font-size:12px;opacity:.85;margin:8px 0}
+.bt-frames{font-family:ui-monospace,Consolas,monospace;font-size:12px;line-height:1.8}
+.bt-saved{margin:10px 0;padding:10px 12px;border-radius:11px;background:#fff6ec;
+  border:2px solid #e8873f;font-size:12.5px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.bt-adv{margin:10px 0 4px;border-top:1px dashed #d8d2c0;padding-top:9px}
+.bt-adv summary{cursor:pointer;font-size:12px;opacity:.65;letter-spacing:.04em;user-select:none}
+.bt-adv summary:hover{opacity:.9}
+.bt-adv-hint{font-size:11.5px;opacity:.6;margin:7px 0 0;line-height:1.65}
 .evocard .nm{font-weight:800;font-size:13px;line-height:1.15}
 .evocard .en{font-size:10px;color:var(--muted);letter-spacing:.05em;text-transform:uppercase}
 .evocard .cond{font-size:10px;color:var(--muted);margin-top:2px;line-height:1.3}
@@ -242,6 +285,14 @@ dialog h3{font-size:16px;margin-bottom:8px}
 dialog p,dialog li{font-size:13px;color:#3a4033}
 dialog code{background:#eee9d8;padding:1px 5px;border-radius:4px;font-size:12px}
 pre{background:#eee9d8;border:1.5px solid rgba(30,36,24,.3);border-radius:8px;padding:10px;font-size:12px;overflow:auto}
+/* ---- simple / advanced mode (todo #8 / #10) ----------------------------- */
+.modeSwitch{display:flex;align-items:center;gap:6px;font-size:12px;color:#4b5346;
+  background:#eee9d8;border:1.5px solid rgba(30,36,24,.35);border-radius:999px;
+  padding:4px 10px;cursor:pointer;user-select:none;white-space:nowrap}
+.modeSwitch input{accent-color:#35502c;margin:0}
+body:not(.advanced) .tab[data-tab="debug"]{display:none}
+body:not(.advanced) #page-debug{display:none !important}
+body:not(.advanced) .advanced-only{display:none !important}
 </style>
 </head>
 <body>
@@ -261,7 +312,11 @@ pre{background:#eee9d8;border:1.5px solid rgba(30,36,24,.3);border-radius:8px;pa
     <span class="sub">控制台 · Studio v3</span>
   </div>
   <span class="spacer"></span>
+  <label class="modeSwitch" title="简单模式只留「ROM / 养成 / 对战」三页；擦除 ROM、重置存档、调试页只在高级模式出现。">
+    <input type="checkbox" id="advMode"><span>高级模式</span>
+  </label>
   <span class="pill" id="pill"><span class="dot"></span><span id="pillText">未连接</span></span>
+  <span class="pill" id="uptime" hidden title="设备本次开机已运行的时长（来自固件每 5 秒一行的 alive frame）。断开再连，如果这个数变小、从 0 重新数，就说明设备被复位了。"><span id="uptimeText">—</span></span>
   <button class="btn primary" id="btnConnect">连接设备</button>
   <button class="btn ghost" id="btnToggleLog" title="串口日志">日志</button>
   <button class="btn ghost" id="btnHelp" title="帮助">?</button>
@@ -271,6 +326,7 @@ pre{background:#eee9d8;border:1.5px solid rgba(30,36,24,.3);border-radius:8px;pa
   <button class="tab" role="tab" aria-selected="true" data-tab="rom">ROM / 存档<span class="en">ROM &amp; SAVE</span></button>
   <button class="tab" role="tab" aria-selected="false" data-tab="care">养成<span class="en">CARE</span></button>
   <button class="tab" role="tab" aria-selected="false" data-tab="debug">调试<span class="en">DEBUG</span></button>
+<button class="tab" role="tab" aria-selected="false" data-tab="battle">对战<span class="en">BATTLE</span></button>
 </nav>
 
 <main>
@@ -284,7 +340,7 @@ pre{background:#eee9d8;border:1.5px solid rgba(30,36,24,.3);border-radius:8px;pa
       <div class="slots" id="romSlots"></div>
       <div class="row" style="margin-top:12px">
         <button class="btn sm" id="btnRomRefresh">刷新 ROMINFO</button>
-        <button class="btn sm" id="btnAges">刷新 AGES</button>
+        <button class="btn sm advanced-only" id="btnAges">刷新 AGES</button>
         <input type="file" id="romFile" accept=".bin,.rom" multiple hidden>
         <span class="hint">支持一次多选，自动铺空槽。</span>
       </div>
@@ -298,7 +354,7 @@ pre{background:#eee9d8;border:1.5px solid rgba(30,36,24,.3);border-radius:8px;pa
         <button class="btn sm" id="btnImportFile">从文件导入</button>
       </div>
       <div class="row" style="margin-top:8px">
-        <button class="btn sm danger" id="btnSaveDel">重置当前存档</button>
+        <button class="btn sm danger advanced-only" id="btnSaveDel">重置当前存档</button>
       </div>
       <input type="file" id="fileInput" accept=".hex,.txt,.bin" hidden>
       <div class="sep"></div>
@@ -347,6 +403,13 @@ pre{background:#eee9d8;border:1.5px solid rgba(30,36,24,.3);border-radius:8px;pa
         <button class="btn sm" data-skip="60">1 小时</button>
         <button class="btn sm" data-skip="120">2 小时</button>
       </div>
+      <div class="row" style="margin-top:8px">
+        <input id="skipCustom" type="number" min="1" max="10080" step="1" value="300"
+               aria-label="自定义跳过分钟数" spellcheck="false"
+               style="width:96px;padding:6px 8px;border:2px solid var(--ink);border-radius:8px;background:#fbf9ef;font-family:ui-monospace,monospace">
+        <button class="btn sm primary" id="btnSkipCustom">跳过 300 分钟</button>
+        <span class="hint" style="margin:0">1–10080 分钟；超过 2 小时会先确认</span>
+      </div>
       <div class="hint" style="margin-top:6px">真跑游戏时间，1 分钟 ≈ 1.26 s（2 小时约 2.5 分钟）。</div>
     </div>
 
@@ -359,14 +422,13 @@ pre{background:#eee9d8;border:1.5px solid rgba(30,36,24,.3);border-radius:8px;pa
   </div>
 
   <div class="card" style="margin-top:16px">
-    <h2>Ver.1 全进化表 <span class="tag">13 SPECIES</span></h2>
+    <h2 id="treeTitle">Ver.1 全进化表 <span class="tag">13 SPECIES</span></h2>
     <div class="hint">按 <b>失误 → 训练 → 过量 → 睡眠打断</b> 的顺序判定，先命中先得。当前形态高亮。</div>
     <div class="tree" id="tree"></div>
     <div class="sep"></div>
-    <h3 style="font-size:12px;letter-spacing:.08em;color:var(--muted)">官方路线图</h3>
-    <div class="hint">公开版不含说明书扫描图。原始出处是《V-Pet Version 1-5》说明书的 Ver.1 页；有合法扫描件的话，用 <code>tools/cut_evo_cards.py</code> 自己切卡片。</div>
-    <div class="hint" style="margin-top:6px">官方路线以 ROM 实测表为准，
-      两者一致时才敢照抄。</div>
+    <!-- 公开版不含"官方路线图"整幅扫描件（版权原因）：本地交付包提供完整版。 -->
+    <div class="hint" style="margin-top:6px">图源：FileIsland《V-Pet Version 1-5》说明书。图上的连线是官方路线，
+      具体阈值以上方 ROM 实测表为准（两者一致时才敢照抄）。</div>
   </div>
 </section>
 
@@ -423,6 +485,110 @@ DUMP / PET / SKIP &lt;分钟&gt;      诊断 / 摘要 / 跳过时间</pre>
     </div>
   </div>
 </section>
+
+<section class="page" id="page-battle">
+  <div class="card">
+    <h3>对战 <span class="en">BATTLE</span></h3>
+    <div class="bt-tabs">
+      <button class="bt-tab on" data-btmode="card">
+        <b>离线卡片</b>
+        <span>对手存在设备里，<b>拔掉数据线也能打</b>。设备自己走进对战界面，网页只负责选卡和看进度。</span>
+      </button>
+      <button class="bt-tab" data-btmode="link">
+        <b>电脑中继</b>
+        <span>电脑通过 USB 逐帧喂给真机当对手。要一台连着线的电脑，用来验链路或陪练。</span>
+      </button>
+    </div>
+
+    <div id="btCardPane">
+      <div class="bt-step">
+        <div class="bt-step-h">① 卡片架（设备 NVS 里的 8 张卡）</div>
+        <div id="btShelf" class="bt-shelf"></div>
+        <div class="row" style="margin:9px 0 0;gap:8px;align-items:center">
+          <button id="btnCardReload" class="btn sm">重新读取</button>
+          <span id="btShelfInfo" class="hint">未读取</span>
+        </div>
+      </div>
+
+      <div class="bt-step">
+        <div class="bt-step-h">② 这一格放谁（按当前 ROM 版本自动切 12 只）</div>
+        <div id="btCardRoster" class="bt-roster"></div>
+        <div class="row" style="margin:9px 0 0;gap:10px;align-items:center;flex-wrap:wrap">
+          <label class="hint">名字 <input id="btCardName" maxlength="10" placeholder="10 字符内"
+                 style="width:118px;padding:4px 6px;border-radius:8px;border:1px solid #d8d2c0"></label>
+          <label class="hint">effort
+            <select id="btCardEffort" style="padding:4px 6px;border-radius:8px;border:1px solid #d8d2c0">
+              <option value="0">0</option><option value="1">1</option><option value="2">2</option>
+              <option value="3">3</option><option value="4">4</option>
+            </select></label>
+          <button id="btnCardSave" class="btn">存到这一格</button>
+          <button id="btnCardDel" class="btn advanced-only">删除这一格</button>
+        </div>
+        <div id="btCardEdit" class="bt-pick-info">还没选中格子</div>
+      </div>
+
+      <div class="row" style="margin:14px 0 8px">
+        <button id="btnCardFight" class="btn primary">保存并开打</button>
+        <button id="btnCardStop" class="btn">停止</button>
+      </div>
+      <p class="bt-lead" style="margin-top:0">
+        开打之后<b>设备自己按键</b>：翻到对战图标 → 进界面 → 按 B 发起。
+        网页这时只轮询 <code>CARDST</code> 看进度，<b>不会抢着回帧</b>（卡片由固件应答）。
+        打完 <code>bouts</code> 一变就会提示存档。
+      </p>
+    </div>
+
+    <div id="btLinkPane" hidden>
+    <h3>电脑中继 <span class="en">LINK BATTLE</span></h3>
+    <p class="bt-lead">
+      真机走 D-Link 单线（P2.0），电脑通过 USB 控制台喂帧。
+      <b>先选谁发起，再点一个对手，然后「开始对战」。</b>
+    </p>
+
+    <div class="bt-step">
+      <div class="bt-step-h">① 谁发起</div>
+      <div class="bt-modes">
+        <button class="bt-mode on" data-mode="dev">
+          <b>真机发起</b>
+          <span>真机先出卡，电脑应答。胜负由真机自己算，<b>会加战绩</b>（推荐）。</span>
+        </button>
+        <button class="bt-mode" data-mode="pc">
+          <b>电脑发起</b>
+          <span>电脑先出卡，真机应答。动画照走，<b>不加战绩</b>，用于陪练/验链路。</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="bt-step">
+      <div class="bt-step-h">② 对手（电脑扮演的那一方）</div>
+      <div id="btRoster" class="bt-roster"></div>
+      <div id="btPick" class="bt-pick-info">未选择</div>
+    </div>
+
+    <div class="row" style="margin:14px 0 8px">
+      <button id="btnBtGo" class="btn primary">开始对战</button>
+      <button id="btnBtState" class="advanced-only">读状态</button>
+    </div>
+    <details class="bt-adv">
+      <summary>调试工具</summary>
+      <div class="row" style="margin:9px 0 0">
+        <button id="btnBtSend" title="手动把电脑这方的卡帧推上线。真机发起模式下抢在真机前面发会打乱握手。">手动发卡</button>
+        <button id="btnBtVerdict" title="手动补发第二帧（判定）。对端没收到时才需要。">补发判定</button>
+        <button id="btnBtClear">清空帧表</button>
+      </div>
+      <p class="bt-adv-hint">
+        正常流程一个都用不到：点「开始对战」后，该发卡、该回判定都是自动的。
+        这里只在自动回帧失效、或想单独验链路（看 <code>LINKSTAT</code> 的 <code>peertx</code>）
+        时才动；真机发起模式下别抢在真机前面手动发卡。
+      </p>
+    </details>
+    </div><!-- /btLinkPane -->
+
+    <div id="btSaved" class="bt-saved" hidden></div>
+    <div id="btState" class="bt-state">未开始</div>
+    <div id="btFrames" class="bt-frames"></div>
+  </div>
+</section>
 </main>
 
 <!-- ================================================================= log -->
@@ -470,7 +636,7 @@ const ROM_READY_TIMEOUT_MS = 8000, ROM_RESULT_TIMEOUT_MS = 30000;
 
 /* Ver.1 growth chart.  Slots follow the ROM's own 0x1200 dispatch table:
  * 0 egg, 1..2 baby, 3..4 child, 5..11 adult, 12..14 perfect, 15 grave. */
-const SPECIES = [
+const SPECIES_V1 = [
   { slot: 0,  en: "Egg",           zh: "数码蛋" },
   { slot: 1,  en: "Botamon",       zh: "滚球兽" },
   { slot: 2,  en: "Koromon",       zh: "小鬼兽" },
@@ -480,9 +646,9 @@ const SPECIES = [
   { slot: 6,  en: "Tyranomon",     zh: "巨龙兽" },
   { slot: 7,  en: "Meramon",       zh: "火焰兽" },
   { slot: 8,  en: "Seadramon",     zh: "海龙兽" },
-  { slot: 9,  en: "Numemon",       zh: "鼻涕兽" },
+  { slot: 9,  en: "Airdramon",     zh: "飞龙兽" },
   { slot: 10, en: "Devimon",       zh: "恶魔兽" },
-  { slot: 11, en: "Airdramon",     zh: "飞龙兽" },
+  { slot: 11, en: "Numemon",       zh: "鼻涕兽" },
   { slot: 12, en: "MetalGreymon",  zh: "机械暴龙兽" },
   { slot: 13, en: "Mamemon",       zh: "豆豆兽" },
   { slot: 14, en: "Monzaemon",     zh: "熊仔兽" },
@@ -491,27 +657,183 @@ const SPECIES = [
 
 /* 12 rules reproduce all 14,112 measured rows (tools/gen_evo_rules.py checks
  * this against care_rules_v1.json before they are written here). */
-const EVO_RULES = [
-  { from: 2,  to: 3,  care: [0,3], train: [0,63],  over: [0,6], sleep: [0,12] },
-  { from: 2,  to: 4,  care: [4,6], train: [0,63],  over: [0,6], sleep: [0,12] },
-  { from: 3,  to: 5,  care: [0,3], train: [32,63], over: [0,6], sleep: [0,12] },
-  { from: 3,  to: 7,  care: [0,3], train: [0,31],  over: [0,6], sleep: [0,12] },
+const EVO_RULES_V1 = [
+  { from: 2,  to: 3,  care: [0,3], train: [0,63],  over: [0,6], sleep: [0,15] },
+  { from: 2,  to: 4,  care: [4,6], train: [0,63],  over: [0,6], sleep: [0,15] },
+  { from: 3,  to: 5,  care: [0,3], train: [32,63], over: [0,6], sleep: [0,15] },
+  { from: 3,  to: 7,  care: [0,3], train: [0,31],  over: [0,6], sleep: [0,15] },
   { from: 3,  to: 6,  care: [4,6], train: [5,15],  over: [3,6], sleep: [0,4] },
   { from: 3,  to: 8,  care: [4,6], train: [16,63], over: [3,6], sleep: [0,6] },
-  { from: 3,  to: 11, care: [4,6], train: [0,63],  over: [0,6], sleep: [0,12] },
-  { from: 4,  to: 7,  care: [0,3], train: [48,63], over: [0,6], sleep: [0,12] },
-  { from: 4,  to: 8,  care: [0,3], train: [0,47],  over: [0,6], sleep: [0,12] },
-  { from: 4,  to: 9,  care: [4,6], train: [8,31],  over: [0,3], sleep: [9,12] },
+  { from: 3,  to: 11, care: [4,6], train: [0,63],  over: [0,6], sleep: [0,15] },
+  { from: 4,  to: 7,  care: [0,3], train: [48,63], over: [0,6], sleep: [0,15] },
+  { from: 4,  to: 8,  care: [0,3], train: [0,47],  over: [0,6], sleep: [0,15] },
+  { from: 4,  to: 9,  care: [4,6], train: [8,31],  over: [0,3], sleep: [9,15] },
   { from: 4,  to: 10, care: [4,6], train: [8,31],  over: [4,6], sleep: [0,8] },
-  { from: 4,  to: 11, care: [4,6], train: [0,63],  over: [0,6], sleep: [0,12] },
+  { from: 4,  to: 11, care: [4,6], train: [0,63],  over: [0,6], sleep: [0,15] },
 ];
 
 /* 说明书《V-Pet Version 1-5》Ver.1 分解图里裁下来的 14 张卡片（56px, 48 色）。
  * 图源 docs/pdf_assets/page_img_01.jpg，裁切与编码见 tools/cut_evo_cards.py。 */
-/* 公开版不含说明书扫描图（版权归 Bandai / 原出版方）。这里留空，树状图退化成
- * 纯色卡片：名字、阶段色、阈值、命中高亮全部照常，只是没有立绘。
- * 想恢复配图：跑 python tools/cut_evo_cards.py 生成 data URI 再填回来。 */
-const EVO_ART = {};
+/*
+ * 公开仓库版：下面四张表的配图（彩色卡片、物种图标）裁自说明书扫描件，
+ * 版权归 Bandai / 原出版社，因此这里只保留形状数据，配图置空。
+ * 卡片名字、阶段色、数值、判据、实测规则全部照原样保留。
+ * 要用完整版（带图）请取本地交付包里的 digimon_studio.html。
+ */
+const EVO_ART_V1 = {};
+
+
+/* ---- V2 / V3 / V4 tables (measured 2026-11-05) ----------------------
+ * V2/V3/V4 share the 0x0D10 picker code word for word; the per-slot
+ * species table differs, so the rule list is the same and the names/art
+ * are not.  Cards cut from docs/pdf_assets/page_img_0{3,4,5}.jpg with the
+ * same connected-component method as V1.
+ */
+const SPECIES_V2 = [
+  {"slot": 0, "en": "EGG", "zh": "数码蛋"},
+  {"slot": 1, "en": "Punimon", "zh": "普尼兽"},
+  {"slot": 2, "en": "Tsunomon", "zh": "兹巴兽"},
+  {"slot": 3, "en": "Gabumon", "zh": "加布兽"},
+  {"slot": 4, "en": "Elecmon", "zh": "艾力兽"},
+  {"slot": 5, "en": "Kabuterimon", "zh": "甲虫兽"},
+  {"slot": 6, "en": "Angemon", "zh": "天使兽"},
+  {"slot": 7, "en": "Birdramon", "zh": "巴多拉兽"},
+  {"slot": 8, "en": "Garurumon", "zh": "加鲁鲁兽"},
+  {"slot": 9, "en": "Yukidarumon", "zh": "雪人兽"},
+  {"slot": 10, "en": "Whamon", "zh": "巨鲸兽"},
+  {"slot": 11, "en": "Vegiemon", "zh": "野菜兽"},
+  {"slot": 12, "en": "SkullGreymon", "zh": "丧尸暴龙兽"},
+  {"slot": 13, "en": "MetalMamemon", "zh": "金属豆豆兽"},
+  {"slot": 14, "en": "Vademon", "zh": "宇宙脑魔"},
+  {"slot": 15, "en": "DEAD", "zh": "死亡"},
+];
+const EVO_RULES_V2 = [
+  { from: 2, to: 3, care: [0, 3], train: [0, 63], over: [0, 6], sleep: [0, 15] },
+  { from: 2, to: 4, care: [4, 6], train: [0, 63], over: [0, 6], sleep: [0, 15] },
+  { from: 3, to: 5, care: [0, 3], train: [48, 63], over: [0, 6], sleep: [0, 15] },
+  { from: 3, to: 7, care: [0, 3], train: [0, 47], over: [0, 6], sleep: [0, 15] },
+  { from: 3, to: 6, care: [4, 6], train: [5, 31], over: [3, 6], sleep: [0, 4] },
+  { from: 3, to: 8, care: [4, 6], train: [32, 63], over: [3, 6], sleep: [0, 6] },
+  { from: 3, to: 11, care: [4, 6], train: [0, 63], over: [0, 6], sleep: [0, 15] },
+  { from: 4, to: 7, care: [0, 3], train: [48, 63], over: [0, 6], sleep: [0, 15] },
+  { from: 4, to: 9, care: [0, 3], train: [0, 47], over: [0, 6], sleep: [0, 15] },
+  { from: 4, to: 8, care: [4, 6], train: [8, 15], over: [0, 5], sleep: [5, 15] },
+  { from: 4, to: 10, care: [4, 6], train: [16, 63], over: [6, 6], sleep: [0, 4] },
+  { from: 4, to: 11, care: [4, 6], train: [0, 63], over: [0, 6], sleep: [0, 15] },
+];
+const EVO_ART_V2 = {};
+
+const SPECIES_V3 = [
+  {"slot": 0, "en": "EGG", "zh": "数码蛋"},
+  {"slot": 1, "en": "Poyomon", "zh": "浮游兽"},
+  {"slot": 2, "en": "Tokomon", "zh": "迪哥兽"},
+  {"slot": 3, "en": "Patamon", "zh": "巴达兽"},
+  {"slot": 4, "en": "Kunemon", "zh": "库加兽"},
+  {"slot": 5, "en": "Unimon", "zh": "独角兽"},
+  {"slot": 6, "en": "Centalmon", "zh": "人马兽"},
+  {"slot": 7, "en": "Ogremon", "zh": "奥加兽"},
+  {"slot": 8, "en": "Bakemon", "zh": "猛鬼兽"},
+  {"slot": 9, "en": "Shellmon", "zh": "贝壳兽"},
+  {"slot": 10, "en": "Drimogemon", "zh": "钻地兽"},
+  {"slot": 11, "en": "Scumon", "zh": "烂泥兽"},
+  {"slot": 12, "en": "Andromon", "zh": "安杜路兽"},
+  {"slot": 13, "en": "Giromon", "zh": "守卫兽"},
+  {"slot": 14, "en": "Etemon", "zh": "猩猩兽"},
+  {"slot": 15, "en": "DEAD", "zh": "死亡"},
+];
+const EVO_RULES_V3 = [
+  { from: 2, to: 3, care: [0, 3], train: [0, 63], over: [0, 6], sleep: [0, 15] },
+  { from: 2, to: 4, care: [4, 6], train: [0, 63], over: [0, 6], sleep: [0, 15] },
+  { from: 3, to: 5, care: [0, 3], train: [48, 63], over: [0, 6], sleep: [0, 15] },
+  { from: 3, to: 7, care: [0, 3], train: [0, 47], over: [0, 6], sleep: [0, 15] },
+  { from: 3, to: 6, care: [4, 6], train: [5, 31], over: [3, 6], sleep: [0, 4] },
+  { from: 3, to: 8, care: [4, 6], train: [32, 63], over: [3, 6], sleep: [0, 6] },
+  { from: 3, to: 11, care: [4, 6], train: [0, 63], over: [0, 6], sleep: [0, 15] },
+  { from: 4, to: 7, care: [0, 3], train: [48, 63], over: [0, 6], sleep: [0, 15] },
+  { from: 4, to: 9, care: [0, 3], train: [0, 47], over: [0, 6], sleep: [0, 15] },
+  { from: 4, to: 8, care: [4, 6], train: [8, 15], over: [0, 5], sleep: [5, 15] },
+  { from: 4, to: 10, care: [4, 6], train: [16, 63], over: [6, 6], sleep: [0, 4] },
+  { from: 4, to: 11, care: [4, 6], train: [0, 63], over: [0, 6], sleep: [0, 15] },
+];
+const EVO_ART_V3 = {};
+
+const SPECIES_V4 = [
+  {"slot": 0, "en": "EGG", "zh": "数码蛋"},
+  {"slot": 1, "en": "Yuramon", "zh": "尤拉兽"},
+  {"slot": 2, "en": "Tanemon", "zh": "种子兽"},
+  {"slot": 3, "en": "Piyomon", "zh": "比丘兽"},
+  {"slot": 4, "en": "Palmon", "zh": "巴鲁兽"},
+  {"slot": 5, "en": "Kokatorimon", "zh": "巨鸡兽"},
+  {"slot": 6, "en": "Cocatrimon", "zh": "鸡蛇兽"},
+  {"slot": 7, "en": "Leomon", "zh": "狮子兽"},
+  {"slot": 8, "en": "Coelamon", "zh": "腔棘鱼兽"},
+  {"slot": 9, "en": "Kuwagamon", "zh": "古加兽"},
+  {"slot": 10, "en": "Mojyamon", "zh": "毛人兽"},
+  {"slot": 11, "en": "Nanimon", "zh": "纳尼兽"},
+  {"slot": 12, "en": "MegaDramon", "zh": "百万龙兽"},
+  {"slot": 13, "en": "Picklemon", "zh": "泡菜兽"},
+  {"slot": 14, "en": "DigiTamamon", "zh": "数码蛋兽"},
+  {"slot": 15, "en": "DEAD", "zh": "死亡"},
+];
+const EVO_RULES_V4 = [
+  { from: 2, to: 3, care: [0, 3], train: [0, 63], over: [0, 6], sleep: [0, 15] },
+  { from: 2, to: 4, care: [4, 6], train: [0, 63], over: [0, 6], sleep: [0, 15] },
+  { from: 3, to: 5, care: [0, 3], train: [48, 63], over: [0, 6], sleep: [0, 15] },
+  { from: 3, to: 7, care: [0, 3], train: [0, 47], over: [0, 6], sleep: [0, 15] },
+  { from: 3, to: 6, care: [4, 6], train: [5, 31], over: [3, 6], sleep: [0, 4] },
+  { from: 3, to: 8, care: [4, 6], train: [32, 63], over: [3, 6], sleep: [0, 6] },
+  { from: 3, to: 11, care: [4, 6], train: [0, 63], over: [0, 6], sleep: [0, 15] },
+  { from: 4, to: 7, care: [0, 3], train: [48, 63], over: [0, 6], sleep: [0, 15] },
+  { from: 4, to: 9, care: [0, 3], train: [0, 47], over: [0, 6], sleep: [0, 15] },
+  { from: 4, to: 8, care: [4, 6], train: [8, 15], over: [0, 5], sleep: [5, 15] },
+  { from: 4, to: 10, care: [4, 6], train: [16, 63], over: [6, 6], sleep: [0, 4] },
+  { from: 4, to: 11, care: [4, 6], train: [0, 63], over: [0, 6], sleep: [0, 15] },
+];
+const EVO_ART_V4 = {};
+
+/* ---- active growth table ------------------------------------------------ */
+const VERSIONS = {
+  V1: { species: SPECIES_V1, rules: EVO_RULES_V1, art: EVO_ART_V1 },
+  V2: { species: SPECIES_V2, rules: EVO_RULES_V2, art: EVO_ART_V2 },
+  V3: { species: SPECIES_V3, rules: EVO_RULES_V3, art: EVO_ART_V3 },
+  V4: { species: SPECIES_V4, rules: EVO_RULES_V4, art: EVO_ART_V4 },
+};
+let ACTIVE_VERSION = "V1";
+let SPECIES = SPECIES_V1, EVO_RULES = EVO_RULES_V1, EVO_ART = EVO_ART_V1;
+
+/* The device reports the ROM name in ROMCUR and the CRC in ROMSLOT.  Prefer the
+ * CRC (names are user-editable in the partition header); fall back to the name. */
+function versionFromRom(name, crc) {
+  const n = String(name || "").toLowerCase();
+  if (crc === 0x19a9e54e || n === "digimonv2" || n.endsWith("v2")) return "V2";
+  if (crc === 0x3000cf30 || n === "digimonv3" || n.endsWith("v3")) return "V3";
+  if (crc === 0x27df4fd6 || n.includes("v4")) return "V4";
+  if (crc === 0x08ffac1b || n === "digimon" || n.endsWith("v1")) return "V1";
+  return null;
+}
+function setVersion(name, render) {
+  const v = VERSIONS[name];
+  if (!v || name === ACTIVE_VERSION) return false;
+  ACTIVE_VERSION = name;
+  SPECIES = v.species; EVO_RULES = v.rules; EVO_ART = v.art;
+  const t = document.getElementById("treeTitle");
+  if (t) t.innerHTML = "Ver." + name.slice(1) + " 全进化表 <span class=\"tag\">13 SPECIES</span>";
+  if (render !== false) {
+    if (state.pet) renderCare(); else renderTree(-1);
+    /* 对手名册跟着 ROM 版本走（V1/V2/V3/V4 的物种不同） */
+    try { renderRoster(); } catch (e) { /* battle page not parsed yet */ }
+  }
+  return true;
+}
+function currentVersion() {
+  const slot = state.romSlots && state.romSlots[state.romCur];
+  const crc = slot && slot.crc ? parseInt(slot.crc, 16) : 0;
+  return versionFromRom(state.rom, crc);
+}
+function syncVersion(render) {
+  const want = currentVersion();
+  if (want) setVersion(want, render);
+}
 
 
 const CMD = "ROMINFO / ROMIN / ROMOUT / ROMDEL / ROMBOOT / SAVEOUT / SAVEIN / SAVEDEL / STATE / AGES / RAM / DUMP / PET / SKIP";
@@ -633,12 +955,33 @@ async function connect() {
     setPill("", "未连接");
     $("btnConnect").textContent = "连接设备";
     log("打开串口失败: " + e.message, "e");
-    toast("打开串口失败：" + e.message, true);
+    toast("连不上设备：串口被别的程序占着（另一个网页、串口助手、刷机工具），关掉它们再点连接", true);
   }
 }
 async function disconnect() {
   const port = state.port;
   if (!port) return;
+  /* Save before closing.  Closing a USB-Serial-JTAG port toggles DTR/RTS, which
+   * the ESP32-C3 treats as a reset -- and `bouts` only reaches NVS 1.5 s after it
+   * changes.  Disconnecting straight after a battle therefore threw the result
+   * away: the unit rebooted and reloaded the older save. */
+  if (state.connected) {
+    try {
+      await Promise.race([send("SAVE"), sleep(1200)]);
+      await sleep(400);            /* let NVS finish the write */
+    } catch (e) { /* still allow the disconnect */ }
+    /* 关键：ESP32-C3 的 USB-Serial-JTAG 会把 DTR/RTS 的某些组合当成复位序列
+     * （esptool 就是靠这个进下载模式的）。驱动在 close 时若把两根线 drop 到
+     * 默认电平，芯片就重启一次 —— 对战战绩、当前画面全丢，只剩存档。
+     * 实测（pyserial，三次复现）：关端口前把电平设成 DTR=1 / RTS=0（esptool 的
+     * "空闲"组合），close 之后 `alive frame` 继续增长、设备不复位；
+     * 其它三种组合（00/11/01）全部回到 0。
+     * Web Serial 用 setSignals() 复现同一组电平。 */
+    try {
+      await port.setSignals({ dataTerminalReady: true, requestToSend: false });
+      await sleep(150);
+    } catch (e) { /* older Chromium without setSignals: fall back to reset-on-close */ }
+  }
   /* Order matters: mark the session dead *before* cancelling the reader.
    * The read loop re-tests state.port every iteration -- with the old order it
    * cancelled, saw the port still set, grabbed a fresh reader and blocked
@@ -646,6 +989,7 @@ async function disconnect() {
   state.connected = false;
   state.port = null;
   setPill("", "未连接");
+  const ub = $("uptime"); if (ub) ub.hidden = true;   /* 时长是设备侧的数字，断开后没有意义 */
   $("btnConnect").textContent = "连接设备";
   try { state.reader && await Promise.race([state.reader.cancel(), sleep(400)]); } catch {}
   try { state.writer && state.writer.releaseLock(); } catch {}
@@ -691,7 +1035,7 @@ async function send(cmd) {
     /* A silent write failure is what makes a half-open port look like "按钮没反应":
      * the bytes never leave, no reply arrives, and nothing visible happens. */
     log("写串口失败: " + e.message, "e");
-    toast("写串口失败：" + e.message, true);
+    toast("数据发不出去：USB 线松了，或者设备刚重启。拔插一次线再点连接", true);
     return false;
   }
 }
@@ -710,6 +1054,69 @@ function classify(line) {
 /* ---------------------------------------------------------------- protocol */
 function parseProtocol(line) {
   let m;
+
+  /* STATE feeds the battle page's "is the handheld at mode=5 sub=2" check.
+   * Wrapped because parseProtocol is also used before the battle table exists. */
+  try {
+    if ((m = /^STATE .*?mode=(\w+) sub=(\w+)/.exec(line))) {
+      battle.modeNow = m[1];
+      battle.subNow = m[2];
+    }
+    /* 固件每 5 秒打一行 `alive frame=N`（50 fps × 5 s = 250 帧）。
+     * 拿它当"设备跑了多久"的活体计数器：断开重连后数字变小 = 设备被复位了。 */
+    const ma = /alive frame=(\d+)/.exec(line);
+    if (ma) {
+      const sec = Math.round(+ma[1] / 50);
+      const el = $("uptimeText"), box = $("uptime");
+      if (el) el.textContent = "运行 " + (sec >= 60 ? Math.floor(sec / 60) + "m" + (sec % 60) + "s" : sec + "s");
+      if (box) box.hidden = false;
+    }
+    /* 对战结束后提醒落盘：bouts / win 一变就问一句，因为关串口会复位、
+     * 延迟存档会被吃掉。只在 battle.inBattle 期间判，避免平时刷新误报。 */
+    const mw = /win=(\d+) bouts=(\d+)/.exec(line);
+    if (mw) {
+      const w = +mw[1], b = +mw[2];
+      if (battle.inBattle && battle.lastWin !== null &&
+          (w !== battle.lastWin || b !== battle.lastBouts)) {
+        showSavePrompt(b - battle.lastBouts, w - battle.lastWin);
+        battle.inBattle = false;
+      }
+      battle.lastWin = w;
+      battle.lastBouts = b;
+    }
+  } catch (e) { /* battle table not initialised yet */ }
+
+  /* ---- offline battle cards (firmware dg_cards.c) ---- */
+  if ((m = /^CARD (\d+) slot=([0-9A-F]+) effort=(\d+) ver=(\d+) name=(\S*)$/.exec(line))) {
+    cardSlots[+m[1]] = { slot: parseInt(m[2], 16), effort: +m[3], ver: +m[4], name: m[5] || "" };
+    return true;
+  }
+  if ((m = /^CARD (\d+) EMPTY$/.exec(line))) {
+    cardSlots[+m[1]] = null;
+    return true;
+  }
+  if (line === "CARDEND") {
+    renderShelf();
+    return true;
+  }
+  if ((m = /^CARD armed=(\d+) state=(\w+) frames=(\d+) replies=(\d+) walk=(\d+) picker=(\d+) cards=(\d+)/.exec(line))) {
+    onCardStatus({ armed: +m[1], state: m[2], frames: +m[3], replies: +m[4], walk: +m[5], picker: +m[6], cards: +m[7] });
+    return true;
+  }
+  if (/^CARDW /.test(line) || /^CARDDEL /.test(line) || /^CARDGO /.test(line) || /^CARDWBAD/.test(line)) {
+    onCardAck(line);
+    return true;
+  }
+
+  /* ---- D-Link battle ---- */
+  if ((m = /^LX (\d+) ([0-9A-F]{4})$/.exec(line))) {
+    onRomFrame(parseInt(m[1], 10), m[2]);
+    return true;
+  }
+  if ((m = /^LINKSTAT (.*)$/.exec(line))) {
+    battleSetState("LINKSTAT " + m[1]);
+    return true;
+  }
 
   /* hex payload lines belong to an open transfer, never to a command */
   if (state.romCollect || state.collecting) {
@@ -743,6 +1150,7 @@ function parseProtocol(line) {
     const idx = parseInt(m[1], 10);
     state.romCur = idx;
     state.rom = idx >= 0 ? m[2] : null;
+        syncVersion(true);
     $("romTag").textContent = idx >= 0 ? "当前 " + m[2] : "NO ROM";
     $("curTag").textContent = idx >= 0 ? m[2] : "—";
     renderRomSlots();
@@ -759,7 +1167,7 @@ function parseProtocol(line) {
     return true;
   }
   if (/^ROMBAD\b/.test(line)) {
-    toast("ROM 写入失败", true);
+    toast("这个文件不是 16 KB 的 ROM，或者已经损坏，换一个再试", true);
     if (state.waitRomResult) { state.waitRomResult(false); state.waitRomResult = null; }
     return true;
   }
@@ -795,7 +1203,7 @@ function parseProtocol(line) {
     return true;
   }
   if (/^IMPORT(BAD|FAIL|TIMEOUT)/.test(line)) {
-    toast("写入失败: " + line, true);
+    toast("设备没接受这份存档：文件可能损坏，或者传一半断线了", true);
     if (state.waitingResult) { state.waitingResult(false); state.waitingResult = null; }
     return true;
   }
@@ -805,7 +1213,7 @@ function parseProtocol(line) {
     setTimeout(() => { send("AGES"); send("STATE"); }, 300);
     return true;
   }
-  if (/^SAVEDELBAD/.test(line)) { toast("槽号不对", true); return true; }
+  if (/^SAVEDELBAD/.test(line)) { toast("这个槽本来就没有存档", true); return true; }
 
   /* ---- STATE ---- */
   if (/^STATE /.test(line)) {
@@ -845,11 +1253,11 @@ function finishExport() {
   const u8 = new Uint8Array(c.size);
   let off = 0;
   for (const ch of c.chunks) { if (off + ch.length > u8.length) break; u8.set(ch, off); off += ch.length; }
-  if (off !== u8.length) { toast("导出不完整", true); return; }
+  if (off !== u8.length) { toast("导出的数据不完整，重试一次", true); return; }
   const info = blobInfo(u8);
   if (!info.ok) {
     log("导出校验失败：" + info.why, "e");
-    toast("导出校验失败：" + info.why, true);
+    toast("导出的存档校验不过（多半是 USB 传输掉字节），重试一次", true);
     return;
   }
   /* straight to a file: no browser cache in between */
@@ -884,7 +1292,7 @@ function romUpload(slot, bytes, name) {
       const ready = new Promise((res) => (state.waitRomReady = res));
       await send("ROMIN " + slot + " " + bytes.length + " " + crcHex + " " + name);
       const ok = await Promise.race([ready.then(() => true), sleep(ROM_READY_TIMEOUT_MS).then(() => false)]);
-      if (!ok) { toast("没等到 ROMREADY", true); return; }
+      if (!ok) { toast("设备没接住这次上传，重连一次再传", true); return; }
       const result = new Promise((res) => (state.waitRomResult = res));
       let chunk = "";
       for (let i = 0; i < bytes.length; i += LINE_BYTES) {
@@ -894,7 +1302,7 @@ function romUpload(slot, bytes, name) {
       if (chunk) await sendRaw(chunk);
       await send("ROMEND");
       const done = await Promise.race([result, sleep(ROM_RESULT_TIMEOUT_MS).then(() => null)]);
-      if (done === null) toast("等 ROMOK 超时", true);
+      if (done === null) toast("传完了但设备没回话，重新上传一次", true);
     } finally {
       state.romBusy = false; renderRomSlots();
     }
@@ -907,8 +1315,8 @@ function finishRomRead() {
   const u8 = new Uint8Array(c.len);
   let off = 0;
   for (const ch of c.chunks) { if (off + ch.length > u8.length) break; u8.set(ch, off); off += ch.length; }
-  if (off !== u8.length) { toast("ROM 读出长度不对", true); return; }
-  if (crc32(u8) !== c.crc) { toast("ROM CRC 不符", true); return; }
+  if (off !== u8.length) { toast("读回来的数据不完整，重试一次", true); return; }
+  if (crc32(u8) !== c.crc) { toast("读回来的内容和设备上的对不上，重试一次", true); return; }
   download(u8, "digimon_" + c.name + "_" + ts() + ".bin");
   log("✓ 槽 " + c.slot + " 读出 " + u8.length + " B，已存成 .bin", "s");
 }
@@ -918,8 +1326,8 @@ function finishRomRead() {
  * 不经过任何缓存层，调用方自己决定 bytes 从哪来（目前只有「从文件导入」）。 */
 async function writeSaveBytes(bytes, name) {
   if (!state.connected) { toast("先连设备", true); return; }
-  if (state.saveBusy) { toast("上一次写入还没结束", true); return; }
-  if (!bytes || !bytes.length) { toast("没有可写入的数据", true); return; }
+  if (state.saveBusy) { toast("上一个操作还没做完，等两秒再点", true); return; }
+  if (!bytes || !bytes.length) { toast("这个文件里没有存档数据", true); return; }
 
   state.saveBusy = true;
   const total = Math.ceil(bytes.length / LINE_BYTES);
@@ -929,7 +1337,7 @@ async function writeSaveBytes(bytes, name) {
     const ok = await Promise.race([ready.then(() => true), sleep(READY_TIMEOUT_MS).then(() => false)]);
     if (!ok) {
       log("没等到 IMPORTREADY：设备没进导入模式（串口被别的页面抢了？）", "e");
-      toast("没等到 IMPORTREADY", true);
+      toast("设备没进入接收模式，重连一次再导入", true);
       return;
     }
 
@@ -946,11 +1354,11 @@ async function writeSaveBytes(bytes, name) {
     const done = await Promise.race([result, sleep(RESULT_TIMEOUT_MS).then(() => null)]);
     if (done === null) {
       log("等 IMPORTOK 超时：设备可能拒了这份档，或 flash 还没写完", "e");
-      toast("等 IMPORTOK 超时", true);
+      toast("存档传完了但设备没确认，重新导入一次", true);
     }
   } catch (e) {
     log("写入存档失败：" + e.message, "e");
-    toast("写入存档失败：" + e.message, true);
+    toast("存档没写进去：拔插一次线、重连后再导入", true);
   } finally {
     state.saveBusy = false;
   }
@@ -990,7 +1398,7 @@ function renderRomSlots() {
       mkBtn("擦除", () => {
         if (confirm("擦除槽 " + r.slot + "？" + (r.active ? "\n它是当前槽，屏幕会变成 NO ROM。" : "")))
           send("ROMDEL " + r.slot);
-      }, !r.valid || state.romBusy, "danger"),
+      }, !r.valid || state.romBusy, "danger advanced-only"),
     );
     el.appendChild(acts);
     host.appendChild(el);
@@ -1024,6 +1432,7 @@ function petNum(key) {
   return Number.isFinite(n) ? n : null;
 }
 function renderCare() {
+  syncVersion(false);
   const p = state.pet;
   if (!p) {
     $("careName").textContent = "—";
@@ -1036,7 +1445,9 @@ function renderCare() {
   const slot = parseInt(p.slot, 16);
   const sp = speciesOf(slot);
   $("careName").textContent = sp.zh;
-  $("careNameEn").textContent = sp.en + " · slot 0x" + String(p.slot).toUpperCase();
+  const unknownRom = state.rom && !currentVersion();
+  $("careNameEn").textContent = sp.en + " · slot 0x" + String(p.slot).toUpperCase() +
+    (unknownRom ? " · " + state.rom + " 暂无规则表（显示 " + ACTIVE_VERSION + "）" : "");
   $("carePlay").textContent = fmtPlay(petNum("age") || 0);
 
   const left = petNum("left");
@@ -1327,7 +1738,7 @@ $("btnSaveDel").onclick = () => {
   if (!confirm("再确认一次：不可撤销。\n\n槽 " + state.romCur + " · " + state.rom)) return;
   send("SAVEDEL " + state.romCur);
 };
-$("btnState").onclick = () => send("STATE");
+$("btnState").onclick = () => { send("ROMINFO"); send("STATE"); };
 $("btnAges").onclick = () => send("AGES");
 document.querySelectorAll("[data-skip]").forEach((b) => {
   b.onclick = async () => {
@@ -1336,6 +1747,26 @@ document.querySelectorAll("[data-skip]").forEach((b) => {
     if (await send("SKIP " + b.dataset.skip)) toast("跳过 " + b.dataset.skip + " 分钟游戏时间…");
   };
 });
+/* 自定义跳过：参数校验和耗时确认都在页面侧；固件只收 `SKIP <分钟>` */
+$("skipCustom").addEventListener("input", () => {
+  const n = Math.floor(Number($("skipCustom").value));
+  $("btnSkipCustom").textContent =
+    (Number.isFinite(n) && n >= 1) ? "跳过 " + n + " 分钟" : "跳过自定义分钟";
+});
+$("skipCustom").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") $("btnSkipCustom").click();
+});
+$("btnSkipCustom").onclick = async () => {
+  if (!state.connected) { toast("先连设备", true); return; }
+  const n = Math.floor(Number($("skipCustom").value));
+  if (!Number.isFinite(n) || n < 1 || n > 10080) {
+    toast("输入 1–10080 的整数分钟", true);
+    return;
+  }
+  const est = Math.round(n * 1.26);
+  if (n > 120 && !confirm(`跳过 ${n} 分钟游戏时间？\n设备上约需 ${est} 秒（${(est / 60).toFixed(1)} 分钟），期间按 C 可停止。`)) return;
+  if (await send("SKIP " + n)) toast(`跳过 ${n} 分钟游戏时间…`);
+};
 $("btnRam").onclick = () => send("RAM");
 $("btnSelfTest").onclick = async () => {
   if (!state.connected) { toast("先连设备", true); return; }
@@ -1383,13 +1814,585 @@ $("filter").oninput = () => {
   for (const ln of logEl.querySelectorAll(".ln"))
     ln.classList.toggle("hidden", !!f && !ln.textContent.toLowerCase().includes(f));
 };
+/* ---------------------------------------------------------------- battle */
+/* role: "responder" = the handheld started the battle and the PC answers
+ *       "initiator" = the PC opens the exchange and the handheld only answers
+ * The initiator role matters: docs/M2-DEVICE-LINK.md §8.3 shows the *answering*
+ * side is the one whose M(0x7A) reliably reaches 0xF (sub 2->3->6, animation),
+ * while the initiating side needs the peer verdict frame to be accepted as a
+ * verdict, and often parks at M(0x7A)=0xD. */
+const battle = {
+  frames: [], auto: true, pickSlot: 3, replied2: false,
+  sentCard: false, sentVerdict: false,
+  role: "responder",          /* dev -> responder, pc -> initiator */
+  mode: "dev",                /* "dev" = handheld starts, "pc" = we start */
+  modeNow: "?", subNow: "?",
+  lastWin: null, lastBouts: null, inBattle: false,
+};
+
+/* ------------------------------------------------------- offline cards ---
+ * The firmware (main/dg_cards.c) keeps eight cards in NVS and answers the ROM
+ * itself, so nothing here feeds frames: this is a shelf editor plus a start
+ * button.  battle.auto MUST stay false while a card fight runs, otherwise the
+ * page would answer the same frames the card already answered.
+ */
+const cardSlots = new Array(8).fill(null);   /* {slot, effort, ver, name} | null */
+const cardState = { sel: 0, pickSlot: 3, fighting: false, saveTimer: null, pollTimer: null, lastNote: "" };
+
+const VER_INDEX = { V1: 0, V2: 1, V3: 2, V4: 3 };
+
+function cardVerIndex() { return VER_INDEX[ACTIVE_VERSION] ?? 0; }
+function speciesOf(slot) { return SPECIES.find((s) => s.slot === slot) || { zh: "?", en: "?" }; }
+
+function setBattlePane(mode) {
+  document.querySelectorAll(".bt-tab").forEach((el) => el.classList.toggle("on", el.dataset.btmode === mode));
+  const cp = $("btCardPane"), lp = $("btLinkPane");
+  if (cp) cp.hidden = mode !== "card";
+  if (lp) lp.hidden = mode !== "link";
+  /* Card mode must never auto-answer: the device owns the pin now. */
+  battle.auto = mode === "link";
+  if (mode !== "card") stopCardPoll();
+}
+
+function renderShelf() {
+  const box = $("btShelf");
+  if (!box) return;
+  box.innerHTML = cardSlots.map((c, i) => {
+    const on = i === cardState.sel ? " on" : "";
+    if (!c) return '<div class="bt-slot empty' + on + '" data-slot="' + i + '">' +
+      '<div class="n">CARD ' + (i + 1) + "</div><div class=\"nm\">＋ 空槽</div>" +
+      '<div class="sub">点它填一张</div></div>';
+    const sp = speciesOf(c.slot);
+    return '<div class="bt-slot' + on + '" data-slot="' + i + '">' +
+      '<div class="n">CARD ' + (i + 1) + "</div>" +
+      '<div class="nm">' + (c.name || sp.zh) + "</div>" +
+      '<div class="sub">' + c.slot.toString(16).toUpperCase() + "/" + c.effort + " V" + (c.ver + 1) + "</div></div>";
+  }).join("");
+  box.querySelectorAll(".bt-slot").forEach((el) => {
+    el.onclick = () => { cardState.sel = +el.dataset.slot; loadCardIntoEditor(); };
+  });
+  const filled = cardSlots.filter(Boolean).length;
+  const info = $("btShelfInfo");
+  if (info) info.textContent = filled + " / 8 张卡" + (state.connected ? "" : "（未连接，显示的是上次读到的）");
+}
+
+function renderCardRoster() {
+  const box = $("btCardRoster");
+  if (!box) return;
+  const list = SPECIES.filter((s) => s.slot >= 3 && s.slot <= 14);
+  box.innerHTML = list.map((s) => {
+    const art = EVO_ART[s.slot] || "";
+    return '<div class="bt-pick' + (s.slot === cardState.pickSlot ? " on" : "") +
+      '" data-slot="' + s.slot + '">' + (art ? '<img alt="" src="' + art + '">' : "") +
+      "<div><div class=\"nm\">" + s.zh + '</div><div class="en">' + s.en + "</div></div></div>";
+  }).join("");
+  box.querySelectorAll(".bt-pick").forEach((el) => {
+    el.onclick = () => {
+      cardState.pickSlot = +el.dataset.slot;
+      const sp = speciesOf(cardState.pickSlot);
+      const nm = $("btCardName");
+      if (nm && !nm.dataset.touched) nm.value = sp.en.toUpperCase().slice(0, 10);
+      const ef = $("btCardEffort");
+      if (ef && !ef.dataset.touched) ef.value = String(effortFor(cardState.pickSlot));
+      renderCardRoster();
+      renderCardEdit();
+    };
+  });
+  renderCardEdit();
+}
+
+function renderCardEdit() {
+  const ef = $("btCardEffort"), nm = $("btCardName");
+  /* First paint: seed effort and the name from the species the cursor is on.
+   * After that only the user's own edits change them (dataset.touched). */
+  if (ef && !ef.dataset.touched) ef.value = String(effortFor(cardState.pickSlot));
+  if (nm && !nm.dataset.touched) nm.value = speciesOf(cardState.pickSlot).en.toUpperCase().slice(0, 10);
+
+  const el = $("btCardEdit");
+  if (!el) return;
+  const sp = speciesOf(cardState.pickSlot);
+  const c = cardSlots[cardState.sel];
+  el.innerHTML = "格子 <b>CARD " + (cardState.sel + 1) + "</b>：现在" +
+    (c ? "放着 <b>" + (c.name || sp.zh) + "</b>（" + c.slot.toString(16).toUpperCase() + "/" + c.effort +
+        " V" + (c.ver + 1) + "）" : "<b>空</b>") +
+    "；将写入 <b>" + sp.zh + "</b> slot " + cardState.pickSlot.toString(16).toUpperCase() +
+    " · effort " + (ef ? ef.value : effortFor(cardState.pickSlot)) +
+    " · V" + (cardVerIndex() + 1);
+}
+
+function loadCardIntoEditor() {
+  const c = cardSlots[cardState.sel];
+  const ef = $("btCardEffort"), nm = $("btCardName");
+  if (c) {
+    cardState.pickSlot = c.slot;
+    if (ef) { ef.value = String(c.effort); ef.dataset.touched = "1"; }
+    if (nm) { nm.value = c.name; nm.dataset.touched = "1"; }
+  } else {
+    if (ef) { ef.value = String(effortFor(cardState.pickSlot)); delete ef.dataset.touched; }
+    if (nm) { nm.value = speciesOf(cardState.pickSlot).en.toUpperCase().slice(0, 10); delete nm.dataset.touched; }
+  }
+  renderShelf();
+  renderCardRoster();
+}
+
+function cardName() {
+  const raw = ($("btCardName") ? $("btCardName").value : "").trim();
+  /* the firmware parses the name with %10s: one token, no spaces, ASCII only */
+  const clean = raw.replace(/\s+/g, "").replace(/[^\x20-\x7E]/g, "").slice(0, 10);
+  return clean || speciesOf(cardState.pickSlot).en.toUpperCase().slice(0, 10);
+}
+
+async function cardSave(silent) {
+  if (!state.connected) { toast("先连设备", true); return false; }
+  const eff = $("btCardEffort") ? +$("btCardEffort").value : effortFor(cardState.pickSlot);
+  const cmd = "CARDW " + cardState.sel + " " + cardState.pickSlot.toString(16).toUpperCase() +
+              " " + eff + " " + cardVerIndex() + " " + cardName();
+  const ok = await send(cmd);
+  if (!silent) toast("对手已存进这一格");
+  return ok;
+}
+
+async function cardErase() {
+  if (!state.connected) { toast("先连设备", true); return; }
+  await send("CARDDEL " + cardState.sel);
+}
+
+function onCardAck(line) {
+  if (/^CARDWBAD/.test(line)) { toast("这个对手存不进去：物种或属性超出范围，换个图鉴对手再试", true); return; }
+  log("卡片 " + line, "s");
+  setTimeout(() => send("CARDL"), 250);
+}
+
+function onCardStatus(st) {
+  cardState.last = st;
+  const el = $("btState");
+  if (el) el.textContent = "CARDST armed=" + st.armed + " state=" + st.state +
+    " frames=" + st.frames + " replies=" + st.replies + " walk=" + st.walk +
+    " cards=" + st.cards;
+  if (st.armed && st.replies >= 2) battleSetState("卡片已经回完两帧，等 ROM 播动画…");
+  if (!st.armed && cardState.fighting && st.frames >= 2) {
+    battleSetState("打完了（设备已解除卡片）。");
+    stopCardPoll();
+  }
+}
+
+function stopCardPoll() {
+  if (cardState.pollTimer) { clearInterval(cardState.pollTimer); cardState.pollTimer = null; }
+}
+
+function startCardPoll() {
+  stopCardPoll();
+  let n = 0;
+  cardState.pollTimer = setInterval(async () => {
+    if (!state.connected || ++n > 40) { stopCardPoll(); return; }
+    await send("CARDST");
+  }, 3000);
+}
+
+async function cardFight() {
+  if (!state.connected) { toast("先连设备", true); return; }
+  const saved = await cardSave(true);
+  if (saved === false) return;
+  await sleep(400);
+
+  battle.frames = [];
+  renderBattleFrames();
+  battle.lastWin = null;
+  battle.lastBouts = null;
+  battle.inBattle = true;
+  cardState.fighting = true;
+  await send("LINKLOG 1");
+  await sleep(200);
+  /* CARDGO arms the card and the firmware walks itself into the battle screen;
+   * no KEY injection from here on -- the device is pressing its own keys. */
+  await send("CARDGO " + cardState.sel);
+  battleSetState("已武装 CARD " + (cardState.sel + 1) + "，设备正在自己走向对战界面…");
+  log("卡片对战开始：CARD " + (cardState.sel + 1) + " · 接下来不要发 KEY，设备自己按键", "s");
+  startCardPoll();
+}
+
+/* effort 不再是输入框：按进化阶段估一个 0..4，和真机自己报的量级一致。
+ * 卡字节 = (effort << 4) | slot；低 nibble 必须是 3..0xE 才会被 ROM 认成卡帧。 */
+function effortFor(slot) {
+  if (slot <= 2) return 1;
+  if (slot <= 4) return 2;
+  if (slot <= 9) return 3;
+  return 4;
+}
+function cardFor(slot) { return ((effortFor(slot) & 0xF) << 4) | (slot & 0xF); }
+
+function renderRoster() {
+  const box = $("btRoster");
+  if (!box) return;
+  const list = SPECIES.filter((s) => s.slot >= 3 && s.slot <= 14);
+  box.innerHTML = list.map((s) => {
+    const art = EVO_ART[s.slot] || "";
+    return '<div class="bt-pick' + (s.slot === battle.pickSlot ? " on" : "") +
+      '" data-slot="' + s.slot + '">' +
+      (art ? '<img alt="" src="' + art + '">' : "") +
+      '<div><div class="nm">' + s.zh + '</div><div class="en">' + s.en + "</div></div></div>";
+  }).join("");
+  box.querySelectorAll(".bt-pick").forEach((el) => {
+    el.onclick = () => { battle.pickSlot = +el.dataset.slot; renderRoster(); };
+  });
+  const info = $("btPick");
+  if (info) {
+    const sp = SPECIES.find((s) => s.slot === battle.pickSlot) || { zh: "?", en: "?" };
+    info.innerHTML = "对手：<b>" + sp.zh + "</b>（" + sp.en + "） · slot " + battle.pickSlot +
+      " · effort <b>" + effortFor(battle.pickSlot) + "</b>（按进化阶段自动算，只读）";
+  }
+}
+
+function showSavePrompt(db, dw) {
+  const box = $("btSaved");
+  if (!box) return;
+  box.hidden = false;
+  box.innerHTML = "战绩有变化（bouts " + (db >= 0 ? "+" + db : db) +
+    "，win " + (dw >= 0 ? "+" + dw : dw) + "），<b>还没落盘</b>。" +
+    "关闭连接会让设备复位，延迟存档会被吃掉。" +
+    '<button id="btnBtSaveNow" class="btn primary sm">立即存档</button>' +
+    '<button id="btnBtIgnore" class="btn sm">忽略</button>';
+  $("btnBtSaveNow").onclick = async () => {
+    await send("SAVE");
+    box.innerHTML = "已存档。";
+    setTimeout(() => { box.hidden = true; }, 2600);
+  };
+  $("btnBtIgnore").onclick = () => { box.hidden = true; };
+}
+
+function bitrev8(b) {
+  b = ((b & 0xF0) >> 4) | ((b & 0x0F) << 4);
+  b = ((b & 0xCC) >> 2) | ((b & 0x33) << 2);
+  b = ((b & 0xAA) >> 1) | ((b & 0x55) << 1);
+  return b & 0xFF;
+}
+/* CON_DGM shifts MSB-first, so a data byte d travels as bitrev8(d). */
+function wireFrame(d0, d1) { return (bitrev8(d0) & 0xFF) | ((bitrev8(d1) & 0xFF) << 8); }
+function hex4(v) { return (v & 0xFFFF).toString(16).toUpperCase().padStart(4, "0"); }
+function hex2(v) { return (v & 0xFF).toString(16).toUpperCase().padStart(2, "0"); }
+
+function battleSetState(t) { const el = $("btState"); if (el) el.textContent = t; }
+
+function renderBattleFrames() {
+  const box = $("btFrames");
+  if (!box) return;
+  box.innerHTML = battle.frames
+    .map((f) => '<div>#' + f.n + ' <b>' + f.hex + '</b>  data ' + hex2(f.d0) + " " + hex2(f.d1) +
+                "  <i>" + f.kind + "</i></div>")
+    .join("");
+}
+
+/* The ROM dispatches on d0's low nibble (LSB of the first data byte travels
+ * first, so M(0x20) is that nibble):
+ *   0 / 0xF        -> invalid, ROM clears M(0x7A) and re-sends
+ *   1 / 2          -> verdict frame
+ *   3 .. 0xE       -> card frame
+ * NOTE: `LX <n>` is the device's cumulative send counter, NOT the frame index of
+ * the current battle (it keeps climbing across fights: LX 23 was observed in the
+ * middle of a normal battle).  Never branch on n.  Use d0. */
+function frameKind(d0) {
+  const lead = d0 & 0xF;
+  if (lead === 0 || lead === 0xF) return "invalid";
+  return lead <= 2 ? "verdict" : "card";
+}
+
+async function onRomFrame(n, hex) {
+  const f = parseInt(hex, 16);
+  const d0 = bitrev8(f & 0xFF);
+  const d1 = bitrev8((f >> 8) & 0xFF);
+  const kind = frameKind(d0);
+  battle.frames.push({ n: n, hex: hex, d0: d0, d1: d1, kind: kind });
+  renderBattleFrames();
+  battleSetState("收到真机 " + kind + " 帧 " + hex + "（data " + hex2(d0) + " " + hex2(d1) + "）");
+  if (!battle.auto) return;
+
+  /* PC opens: the handheld's card is answered by our verdict, and its verdict
+   * (if it sends one) ends the exchange.  Nothing to answer after that. */
+  if (battle.role === "initiator") {
+    if (kind === "card" && !battle.sentVerdict) {
+      battle.sentVerdict = true;
+      const lead = d0 & 0xF;
+      const mine = lead === 1 ? 2 : 1;
+      const vf = wireFrame(mine, (~mine) & 0xFF);
+      battleSetState("真机卡 data " + hex2(d0) + "（slot " + lead + " / effort " + ((d0 >> 4) & 0xF) +
+                     "）→ 我发判定 " + hex4(vf));
+      await send("LINKFRAME " + hex4(vf));
+    } else if (kind === "verdict") {
+      battleSetState("真机判定 " + hex + " —— 握手完成，看真机 sub 是否变 3 和 bouts");
+    }
+    return;
+  }
+
+  /* The handheld started: answer its card with ours, then answer its verdict. */
+  if (kind === "card" && !battle.sentCard) {
+    battle.sentCard = true;
+    const card = cardFor(battle.pickSlot);
+    await send("LINKFRAME " + hex4(wireFrame(card, (~card) & 0xFF)));
+  } else if (kind === "verdict" && !battle.replied2) {
+    battle.replied2 = true;
+    const mine = (d0 & 0xF) === 1 ? 2 : 1;
+    await send("LINKFRAME " + hex4(wireFrame(mine, (~mine) & 0xFF)));
+  }
+}
+
+async function battleEnter() {
+  if (!state.connected) { toast("先连设备", true); return; }
+  battleSetState("按键注入中…（真机大约 6 秒）");
+  await send("LINKLOG 1");
+  await sleep(250);
+  await send("KEY 1 600");          /* C: back to the main screen / wake up */
+  await sleep(900);
+  await send("STATE");
+  await sleep(350);
+  /* Icon order is mode 2..8 = 状态/病毒/药/对战/便便/灯泡/创可贴, and mode=0 is the
+   * main screen, so the battle icon is four A presses away.  A fixed count of 5
+   * lands on 便便 -- read STATE after every press and stop on mode=5 instead. */
+  for (let i = 0; i < 6 && battle.modeNow !== "5"; i++) {
+    await send("KEY 4 600");
+    await sleep(900);
+    await send("STATE");
+    await sleep(350);
+  }
+  if (battle.modeNow !== "5") {
+    battleSetState("没找到对战图标（当前 mode=" + battle.modeNow + "）—— 确认宠物没在睡觉/受伤");
+    return;
+  }
+  await send("KEY 2 600");          /* B: enter the battle screen */
+  await sleep(900);
+  await send("STATE");
+  await sleep(350);
+  battleSetState("已到对战界面（mode=" + battle.modeNow + " sub=" + battle.subNow + "）。" +
+                 "点「③ 我当发起方」让 PC 先手打一场，或再按一次 B 让真机发起后用「② 发我的卡」");
+}
+
+async function battleSendCard() {
+  if (!state.connected) { toast("先连设备", true); return; }
+  battle.auto = true;
+  battle.role = battle.mode === "pc" ? "initiator" : "responder";
+  battle.replied2 = false;
+  battle.sentCard = false;
+  battle.sentVerdict = false;
+  const card = cardFor(battle.pickSlot);
+  const f = wireFrame(card, (~card) & 0xFF);
+  battleSetState("发对手的卡 " + hex4(f) + "（" +
+                 (SPECIES.find((s) => s.slot === battle.pickSlot) || {}).zh + " / slot " +
+                 battle.pickSlot + " / effort " + effortFor(battle.pickSlot) + "）");
+  await send("LINKFRAME " + hex4(f));
+}
+
+/* PC opens the exchange.  The handheld must sit at mode=5 sub=2 and must NOT
+ * have pressed B a third time -- as the answering side its M(0x7A) reaches 0xF
+ * on the first two frames, which is the whole point of this button. */
+async function battleAsInitiator() {
+  if (!state.connected) { toast("先连设备", true); return; }
+  battle.auto = true;
+  battle.role = "initiator";
+  battle.replied2 = false;
+  battle.sentCard = false;
+  battle.sentVerdict = false;
+  battle.frames = [];
+  renderBattleFrames();
+
+  await send("STATE");
+  await sleep(500);
+  /* Self-contained: walk the handheld to the battle screen if the user has not
+   * pressed ① yet, instead of telling them to go do it. */
+  if (battle.modeNow !== "5") {
+    battleSetState("真机不在对战界面（mode=" + battle.modeNow + "），先自动带过去…");
+    await battleEnter();
+    await send("STATE");
+    await sleep(450);
+  }
+  if (battle.subNow !== "2") {
+    battleSetState("真机在 mode=" + battle.modeNow + " sub=" + battle.subNow + "，补按一次 B…");
+    await send("KEY 2 600");
+    await sleep(1400);
+    await send("STATE");
+    await sleep(500);
+  }
+  if (battle.modeNow !== "5" || battle.subNow !== "2") {
+    battleSetState("真机还是没到 mode=5 sub=2（当前 mode=" + battle.modeNow + " sub=" + battle.subNow +
+                   "）—— 看 STATE 的 sleep / energy / injured，这三项任何一项不对都进不去");
+    return;
+  }
+
+  /* Two resets the ROM will not do for us (measured on hardware, round 91):
+   *   M(0x7A)  four-bit handshake progress.  It survives leaving the battle
+   *            screen, so a finished/aborted handshake makes the next exchange
+   *            answer nothing at all.
+   *   M(0x05) bit0  injured.  The ROM rewrites this nibble every frame, so it
+   *            has to be cleared in the SAME burst as the frame, not earlier.
+   * Without both of these the handheld simply does not answer. */
+  await send("RAMW 7A 0");
+  await sleep(200);
+  const card = cardFor(battle.pickSlot);
+  const f = wireFrame(card, (~card) & 0xFF);
+  battleSetState("我发卡 " + hex4(f) + "（" +
+                 (SPECIES.find((s) => s.slot === battle.pickSlot) || {}).zh + " / slot " +
+                 battle.pickSlot + " / effort " + effortFor(battle.pickSlot) + "），等真机回卡…");
+  await sendRaw("RAMW 05 0\nRAMW 8C 4\nLINKFRAME " + hex4(f) + "\n");
+  log("→ 同批发卡 + 清 injured/energy: " + hex4(f), "r");
+  await sleep(2500);
+  if (battle.frames.length === 0) {
+    battleSetState("2.5 s 内没收到真机回帧 —— 点「读状态」看 LINKSTAT：wrx=0 说明真机没在收" +
+                   "（多半在睡觉 / sub 不是 2 / 缺 RAMW 7A 0）");
+  }
+}
+
+/* Manual verdict, for when 自动回帧 is off.  The verdict is the second frame:
+ * [version 4b][win/lose 4b]; the handheld only checks the lead nibble (1 or 2)
+ * and takes our answer as the bitwise complement of its own, which is why the
+ * frame is wireFrame(v, ~v).  We mirror the last card it sent us. */
+async function battleSendVerdict() {
+  if (!state.connected) { toast("先连设备", true); return; }
+  const last = battle.frames.length ? battle.frames[battle.frames.length - 1] : null;
+  const d0 = last ? last.d0 : 0x03;
+  const lead = d0 & 0xF;
+  const mine = lead === 1 ? 2 : 1;
+  const vf = wireFrame(mine, (~mine) & 0xFF);
+  battleSetState("补发判定 " + hex4(vf) + "（依据上一帧 data " + hex2(d0) + "，verdict " + mine + "）");
+  await send("LINKFRAME " + hex4(vf));
+}
+
+if ($("btnBtEnter")) $("btnBtEnter").onclick = () => { battleEnter().catch((e) => toast("这一步没做完：" + e.message, true)); };
+/* 对战期间每 5 s 读一次 STATE，直到 win/bouts 变化（或 70 s 超时）。
+ * 不轮询的话，ROM 打完回主屏，网页永远不知道要提示存档。 */
+let battlePollTimer = null;
+function pollBattle() {
+  if (battlePollTimer) clearInterval(battlePollTimer);
+  let n = 0;
+  battlePollTimer = setInterval(async () => {
+    if (!state.connected || !battle.inBattle || ++n > 14) {
+      clearInterval(battlePollTimer);
+      battlePollTimer = null;
+      return;
+    }
+    await send("STATE");
+  }, 5000);
+}
+
+/* 一键开战：按选定模式跑完整流程。 */
+async function battleGo() {
+  if (!state.connected) { toast("先连设备", true); return; }
+  const box = $("btSaved"); if (box) box.hidden = true;
+  battle.frames = [];
+  renderBattleFrames();
+  battle.replied2 = battle.sentCard = battle.sentVerdict = false;
+  battle.lastWin = null;
+  battle.lastBouts = null;
+  battle.inBattle = true;
+
+  if (battle.mode === "pc") {                  /* 电脑发起：PC 先手 */
+    await battleAsInitiator();
+    pollBattle();
+    return;
+  }
+
+  /* 真机发起：把机器送到 mode=5 sub=2，然后替用户按下发起键。 */
+  await send("STATE");
+  await sleep(450);
+  if (battle.modeNow !== "5") {
+    battleSetState("先把真机带到对战界面…");
+    await battleEnter();
+    await send("STATE");
+    await sleep(450);
+  }
+  if (battle.subNow !== "2") {
+    battleSetState("补按一次 B 进入对战屏（sub=" + battle.subNow + "）…");
+    await send("KEY 2 600");
+    await sleep(1400);
+    await send("STATE");
+    await sleep(450);
+  }
+  if (battle.modeNow !== "5" || battle.subNow !== "2") {
+    battleSetState("真机没到 mode=5 sub=2（当前 " + battle.modeNow + "/" + battle.subNow +
+                   "）。看 STATE 的 sleep / energy / injured 三项。");
+    battle.inBattle = false;
+    return;
+  }
+  battle.role = "responder";
+  battleSetState("已就位，替你按下发起键…");
+  await sendRaw("RAMW 05 0\nRAMW 8C 4\nKEY 2 600\n");
+  await sleep(1500);
+  await send("STATE");
+  await sleep(400);
+  battleSetState("等真机出卡…（收到后会自动回卡、再回判定）");
+  pollBattle();
+}
+
+document.querySelectorAll(".bt-mode").forEach((el) => {
+  el.onclick = () => {
+    battle.mode = el.dataset.mode;
+    document.querySelectorAll(".bt-mode").forEach((x) => x.classList.toggle("on", x === el));
+    battleSetState(battle.mode === "dev"
+      ? "真机发起：电脑只应答，胜负和战绩都由真机自己算。"
+      : "电脑发起：电脑先出卡，动画会走完，但不加战绩（陪练用）。");
+  };
+});
+/* ---- offline card mode wiring ---- */
+document.querySelectorAll(".bt-tab").forEach((el) => {
+  el.onclick = () => setBattlePane(el.dataset.btmode);
+});
+if ($("btnCardReload")) $("btnCardReload").onclick = () => send("CARDL");
+if ($("btnCardSave")) $("btnCardSave").onclick = () => { cardSave(false).catch((e) => toast("这一步没做完：" + e.message, true)); };
+if ($("btnCardDel")) $("btnCardDel").onclick = () => { cardErase().catch((e) => toast("这一步没做完：" + e.message, true)); };
+if ($("btnCardFight")) $("btnCardFight").onclick = () => { cardFight().catch((e) => toast("这一步没做完：" + e.message, true)); };
+if ($("btnCardStop")) $("btnCardStop").onclick = async () => {
+  stopCardPoll();
+  cardState.fighting = false;
+  await send("CARDOFF");
+  battleSetState("已停止卡片对战（CARDOFF）。");
+};
+if ($("btCardEffort")) $("btCardEffort").onchange = () => { $("btCardEffort").dataset.touched = "1"; renderCardEdit(); };
+if ($("btCardName")) $("btCardName").oninput = () => { $("btCardName").dataset.touched = "1"; };
+renderCardRoster();
+renderShelf();
+setBattlePane("card");
+if (state.connected) setTimeout(() => send("CARDL"), 300);
+
+if ($("btnBtGo")) $("btnBtGo").onclick = () => { battleGo().catch((e) => toast("这一步没做完：" + e.message, true)); };
+renderRoster();
+if ($("btnBtVerdict")) $("btnBtVerdict").onclick = () => { battleSendVerdict().catch((e) => toast("这一步没做完：" + e.message, true)); };
+if ($("btnBtSend")) $("btnBtSend").onclick = () => { battleSendCard().catch((e) => toast("这一步没做完：" + e.message, true)); };
+if ($("btnBtState")) $("btnBtState").onclick = () => send("LINKSTAT");
+if ($("btnBtClear")) $("btnBtClear").onclick = () => { battle.frames = []; renderBattleFrames(); battleSetState("帧表已清空"); };
+
+/* Simple / advanced mode (todo #8 / #10).  Default is simple; the choice is
+ * remembered per browser.  The debug tab and every destructive control carry
+ * .advanced-only and stay hidden unless body.advanced is set. */
+const advBox = document.getElementById("advMode");
+function applyStudioMode() {
+  const on = !!(advBox && advBox.checked);
+  document.body.classList.toggle("advanced", on);
+  try { localStorage.setItem("studio.advanced", on ? "1" : "0"); } catch (e) {}
+}
+if (advBox) {
+  try { advBox.checked = localStorage.getItem("studio.advanced") === "1"; } catch (e) {}
+  /* ?adv=1 forces advanced for screenshots and bookmarks */
+  if (new URLSearchParams(location.search).get("adv") === "1") advBox.checked = true;
+  advBox.addEventListener("change", applyStudioMode);
+  applyStudioMode();
+}
+
 document.querySelectorAll(".tab").forEach((tab) => {
   tab.onclick = () => {
+    if (tab.dataset.tab === "debug" && !document.body.classList.contains("advanced")) return;
     document.querySelectorAll(".tab").forEach((t) => t.setAttribute("aria-selected", String(t === tab)));
     document.querySelectorAll(".page").forEach((p) => p.classList.toggle("active", p.id === "page-" + tab.dataset.tab));
     if (tab.dataset.tab === "debug") renderRam();
+    if (tab.dataset.tab === "battle") renderBattleFrames();
   };
 });
+
+/* Deep link: digimon_studio.html#battle boots straight into the battle page.
+ * Handy for screenshots and for a bookmark that skips the ROM tab. */
+(() => {
+  const want = (location.hash || "").replace(/^#/, "");
+  if (!want) return;
+  let tab = document.querySelector('.tab[data-tab="' + want + '"]');
+  if (want === "debug" && !document.body.classList.contains("advanced")) tab = null;   /* simple mode has no debug page */
+  if (tab) tab.click();
+})();
 
 function pickRom(slot) {
   const inp = $("romFile");
@@ -1432,12 +2435,12 @@ function importSaveFile() {
     if (!f) return;
     const buf = new Uint8Array(await f.arrayBuffer());
     const u8 = looksLikeSaveText(buf) ? parseSaveText(new TextDecoder().decode(buf)) : buf;
-    if (!u8 || !u8.length) { toast("文件解析不出存档", true); return; }
+    if (!u8 || !u8.length) { toast("这个文件里找不到存档", true); return; }
     const info = blobInfo(u8);
     if (!info.ok) {
       log("导入文件校验失败：" + info.why + "（" + u8.length + " B，前16字节 " +
           toHex(u8.subarray(0, 16)) + "）", "e");
-      toast("文件校验失败：" + info.why, true);
+      toast("这不是本工具导出的存档文件，或者文件已经损坏", true);
       return;
     }
     log("文件校验通过：" + f.name + " · " + u8.length + " B · seq " + info.seq, "s");
@@ -1516,12 +2519,14 @@ if (tabParam) {
   if (t) t.click();
 }
 
-/* ?demo=1 — 没设备时看排版 */
+/* ?demo=1 — 没设备时看排版；&rom=V1|V2|V3 选规则表 */
 if (/[?&]demo=1/.test(location.search)) {
-  state.rom = "V1"; state.romCur = 0;
+  const demoRom = (new URLSearchParams(location.search).get("rom") || "V1").toUpperCase();
+  const demoCrc = { V1: 0x08ffac1b, V2: 0x19a9e54e, V3: 0x3000cf30, V4: 0x27df4fd6 }[demoRom] || 0x08ffac1b;
+  state.rom = demoRom; state.romCur = 0;
   state.romSlots = [0, 1, 2, 3, 4, 5, 6, 7].map((i) => ({
     slot: i, valid: i < 3, name: ["V1", "V2", "V3", "-", "-", "-", "-", "-"][i],
-    len: i < 3 ? 16384 : 0, crc: 0x08ffac1b + i, active: i === 0,
+    len: i < 3 ? 16384 : 0, crc: i === 0 ? demoCrc : 0x08ffac1b + i, active: i === 0,
   }));
   state.ages = [378000, 45200, 1200, 0, 0, 0, 0, 0];
   state.pet = {
@@ -1531,8 +2536,9 @@ if (/[?&]demo=1/.test(location.search)) {
     stage: "18:42", next: "78:13", left: "3571", age: "105995",
   };
   for (let i = 0; i < 256; i++) state.ram[i] = (i * 7 + (i >> 3)) & 0xF;
+  syncVersion(false);
   renderRomSlots(); renderCare(); renderRam();
-  log("示例数据已载入（?demo=1）", "s");
+  log("示例数据已载入（?demo=1 · " + demoRom + "）", "s");
 }
 })();
 </script>
