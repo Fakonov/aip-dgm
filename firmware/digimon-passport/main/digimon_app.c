@@ -313,7 +313,12 @@ typedef struct { uint8_t mask; uint8_t down; } dg_key_ev_t;
 
 /* The ROM needs a key to be held for ~120 ms to see it (measured), so short
  * taps are stretched by the forwarding layer instead of by a timer here. */
-#define KEY_MIN_HOLD_US 260000       /* >= 2 samples of the ROM's key scan */
+#define KEY_MIN_HOLD_US 50000        /* 50 ms is the shortest hold the ROM accepts
+                                      * (measured with the console KEY command: 5/5
+                                      * at 50 ms holds and 100 ms gaps). Padding to
+                                      * anything longer eats the release window that
+                                      * the next tap needs, so this is the floor.
+                                      * Was 260 ms (3.8 taps/s) -> now ~10 taps/s. */
 
 // ---- NVS ----------------------------------------------------------------
 static void load_saved_rom(void)
@@ -506,7 +511,13 @@ static int stage_minutes_next(void)
 static void rom_skip_minutes(int minutes, const char *label)
 {
     if (!s_have_rom || minutes <= 0) return;
-    const uint32_t total_ticks = (uint32_t)minutes * 60u * OSC1_PER_SEC;
+    /* 64-bit on purpose: a 24 h skip is 2,831,155,200 osc1 ticks, and adding
+     * that to a uint32 `start` overflows once the board has been running for
+     * ~12.4 h (start > 2^32 - total).  The wrapped target then looks already
+     * passed, the loop exits immediately and the skip is silently thrown away
+     * -- the "24H flashes and nothing happens" report.  Instead of an absolute
+     * target, accumulate elapsed ticks with wrap-safe subtraction. */
+    const uint64_t total_ticks = (uint64_t)minutes * 60u * OSC1_PER_SEC;
 
     /* Both entry points -- the SKIP TIME row and the console's `SKIP n` -- have
      * to show the same card.  The console path passed label=NULL and only
@@ -523,8 +534,8 @@ static void rom_skip_minutes(int minutes, const char *label)
         bsp_lvgl_unlock();
     }
 
-    uint32_t start = dg_osc1_ticks();
-    uint32_t target = start + total_ticks;
+    uint32_t last = dg_osc1_ticks();
+    uint64_t acc = 0;                 /* ticks actually stepped, wrap-safe */
     long guard = 0;
     bool cancelled = false;
     int last_pct = -1;
@@ -533,7 +544,7 @@ static void rom_skip_minutes(int minutes, const char *label)
     vTaskDelay(pdMS_TO_TICKS(120));
 
     int batch = 0;
-    while ((int32_t)(dg_osc1_ticks() - target) < 0) {
+    while (acc < total_ticks) {
         for (int i = 0; i < 8192; i++) { dg_step(); guard++; }
         batch++;
 
@@ -542,6 +553,10 @@ static void rom_skip_minutes(int minutes, const char *label)
             if (e.mask == 1 && e.down) cancelled = true;   /* C cancels */
         }
         if (cancelled) break;
+
+        uint32_t now = dg_osc1_ticks();
+        acc += (uint32_t)(now - last);
+        last = now;
 
         /* Yield 1 ms out of every ~65k steps (~11 % of the CPU): enough for the
          * progress number to visibly tick over without dragging the skip out.
@@ -553,7 +568,7 @@ static void rom_skip_minutes(int minutes, const char *label)
          * rebooted mid-skip -- which also threw the skipped time away.
          * 16k steps is ~0.05 s, so this costs about 2 % instead of 11 %. */
         if ((batch & 1) == 0) {
-            int pct = (int)(((uint64_t)(dg_osc1_ticks() - start) * 100u) / total_ticks);
+            int pct = (int)(acc * 100u / total_ticks);
             if (pct != last_pct && s_skip_lbl && bsp_lvgl_lock(20)) {
                 last_pct = pct;
                 lv_label_set_text_fmt(s_skip_lbl, "%s  %d%%\nC=STOP", label, pct);
@@ -563,7 +578,12 @@ static void rom_skip_minutes(int minutes, const char *label)
         }
     }
 
-    uint32_t done_ticks = dg_osc1_ticks() - start;
+    {
+        uint32_t now = dg_osc1_ticks();
+        acc += (uint32_t)(now - last);
+        last = now;
+    }
+    uint32_t done_ticks = (uint32_t)(acc > 0xFFFFFFFFull ? 0xFFFFFFFFull : acc);
     s_pet_sec += done_ticks / OSC1_PER_SEC;   /* skipped time counts as owned time */
     s_age_last_tick = dg_osc1_ticks();        /* do not count it twice in age_tick */
     s_age_frac = 0;

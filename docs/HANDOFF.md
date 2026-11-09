@@ -28,10 +28,15 @@
 > **对战功能已结案；双机无线（G3）目标冻结。**
 > 旧指纹：固件 `0xD7080` = 880,768 B（2026-11-04 20:35，v1.0 发布，已刷真机）；PC 工具 368,561 B（内嵌
 > V1/V2/V3/V4 四套进化表 + 56 张说明书画片，单文件无依赖；按 ROM 名/CRC 自动切表）
-> **交付包**：`...\aip-dgm\release\aip-dgm-v1.0\`（v1.0 本地完整包）
-> （app `0x10000` / 分区表 / **整片镜像 `0x0` ×2**（空 ROM 区、预置三 ROM）/ 工具 / 文档 /
-> `SHA256SUMS.txt` / `镜像\` 三个官方 ROM + 校验）
-> 公开仓库树：`...\release\aip-dgm-v1.0-github\`（不含 ROM 与扫描素材）
+> **交付包**：`...\aip-dgm\release\aip-dgm-v2.0\`（v2.0 本地完整包，28 项 9.3 MB）
+> （app `0x10000` / 分区表 / **整片镜像 `0x0` ×2**（空 ROM 区、预置 V1/V2/V3）/ 工具 / 文档 /
+> `说明.txt` / `SHA256SUMS.txt`（27 项）/ `镜像\` 三个官方 ROM + 校验）
+> 公开仓库树：`...\release\aip-dgm-v2.0-github\`（187 项 2.5 MB，不含 ROM 与扫描素材，
+> 控制台为无图精简版 120,169 B，`SHA256SUMS.txt` 186 项）
+> **✅ v2.0 已发布**：提交 `69a09e3` + tag `v2.0.0` 已推上
+> <https://github.com/Fakonov/aip-dgm>，Release 带两个资产（app bin 与 source-and-tools.zip）；
+> ROM 与带图控制台不进 Release。推之前 `rebase` 过远端那次网页提交 `fa38a54`（README 的 V1 → V1 V2 V3）。
+> 本机 git 需要 `-c http.proxy=http://127.0.0.1:2000 -c http.version=HTTP/1.1` 才连得上
 > **下一段会话从这里开始**：docs/NEXT-SESSION.md（待办清单 + 硬约束，v9 之后的工作）
 > **里程碑快照**：
 > `milestones/2026-11-02_vpet-glass-darkgrey/`（v1：玻璃版式 + 深灰外壳）
@@ -956,6 +961,30 @@ python tools\mk_full_bin.py --build firmware\digimon-passport\build-sim --out do
     立刻进 `sub=2`。`tools/dg_link_pair.py` 的 `to_battle()` 已经内置这一步。
     正常玩法还是让宠物自己恢复（或吃药），别把它当常态。
     另外 `energy` 是 `ram_bcd(0x08C, 0x08D)`，不是受伤标志。
+
+53. **`dg_osc1_ticks()` 是 32 位，**36.4 小时回绕一次；**时间比较一律用差值，禁止绝对目标**
+    （round 112，真机复现）。跳过时间原来是：
+
+    ```c
+    uint32_t target = dg_osc1_ticks() + (uint32_t)minutes * 60u * OSC1_PER_SEC;
+    while ((int32_t)(dg_osc1_ticks() - target) < 0) { ... }
+    ```
+
+    24 h 的 tick 是 2,831,155,200，只要开机超过 **约 12.4 小时**（`start > 2^32 − total`），
+    加法回绕，`target` 落到一个"早已过去"的值，循环一次都不跑 —— 表现就是
+    **玻璃闪一下就没了、时间没跳**。用户机器跑了 16.5 h 时必现。
+    改法是**累加已跑 tick**，与起点无关：
+
+    ```c
+    uint64_t total = (uint64_t)minutes * 60u * OSC1_PER_SEC, acc = 0;
+    uint32_t last = dg_osc1_ticks();
+    while (acc < total) { ...; uint32_t now = dg_osc1_ticks();
+                          acc += (uint32_t)(now - last); last = now; }
+    ```
+
+    已审计全仓其余 30 多处 `dg_osc1_ticks()`：都是小增量（≤3 s）或
+    `(uint32_t)(now - last)` / `(int32_t)(now - target) < 0` 的差值写法，**36.4 小时回绕也安全**。
+    所以**不需要为了计时去定期重启**；以后新增功能照差值写就行。
 
 ## 待办（按优先级）
 

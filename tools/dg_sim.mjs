@@ -324,7 +324,63 @@ async function scRetail() {
   runUntil(now() + 0.8);
 }
 
-const scenarios = { boot: scBoot, menu: scMenu, groups: scGroups, clock: scClock, ac20: scAc20, rom: scRom, retail: scRetail, all: scAll };
+/* A rapid-tap probe: does the firmware merge fast repeats into one long press?
+ * 5 taps at 80 ms hold / 80 ms gap (160 ms period) vs 5 taps at 450/450 ms.
+ * The ROM advances the icon row on every accepted key event, so `mode` counts them. */
+async function scRapid() {
+  runUntil(3);
+  await passClockScreen();
+  runUntil(Number(args.hatch || 400));     /* the icon row only responds after hatching */
+  let st = state();
+  console.log('baseline mode=%s', st ? st.mode : '?');
+  await shot('rapid_0_baseline');
+
+  for (let i = 0; i < 5; i++) await press('UP', 0.08, 0.08);
+  runUntil(now() + 1.2);
+  st = state();
+  console.log('after 5 fast taps (160 ms period): mode=%s', st ? st.mode : '?');
+  await shot('rapid_1_fast');
+
+  for (let i = 0; i < 5; i++) await press('UP', 0.45, 0.45);
+  runUntil(now() + 1.2);
+  st = state();
+  console.log('after 5 slow taps (900 ms period): mode=%s', st ? st.mode : '?');
+  await shot('rapid_2_slow');
+
+  /* 100 ms period: 50 ms hold / 50 ms gap. Exercises the minimum-hold floor. */
+  const from = st ? Number(st.mode) : 0;
+  for (let i = 0; i < 5; i++) await press('UP', 0.05, 0.05);
+  runUntil(now() + 1.2);
+  st = state();
+  console.log('after 5 very fast taps (100 ms period): mode=%s (delta %s)',
+    st ? st.mode : '?', st ? Number(st.mode) - from : '?');
+  await shot('rapid_3_veryfast');
+}
+
+/* Bypass the firmware's minimum-hold padding entirely: the console KEY command
+ * drives dg_set_button() directly, so this measures what the ROM itself needs. */
+async function scKeyProbe() {
+  runUntil(3);
+  await passClockScreen();
+  runUntil(Number(args.hatch || 420));
+  let st = state();
+  console.log('baseline mode=%s', st ? st.mode : '?');
+
+  for (const [hold, gap] of [[50, 100], [120, 250], [50, 200]]) {
+    const from = st ? Number(st.mode) : 0;
+    for (let i = 0; i < 5; i++) {
+      uartSend(`KEY 4 ${hold}\n`);
+      runUntil(now() + gap / 1000);
+    }
+    runUntil(now() + 1.0);
+    st = state();
+    console.log('5x KEY 4 %dms gap %dms -> mode %s (delta %s)',
+      hold, gap, st ? st.mode : '?', st ? Number(st.mode) - from : '?');
+  }
+  await shot('keyprobe_end');
+}
+
+const scenarios = { boot: scBoot, menu: scMenu, groups: scGroups, clock: scClock, ac20: scAc20, rom: scRom, retail: scRetail, rapid: scRapid, keyprobe: scKeyProbe, all: scAll };
 const fn = scenarios[scenario];
 if (!fn) {
   console.error(`unknown scenario "${scenario}" (have: ${Object.keys(scenarios).join(', ')})`);

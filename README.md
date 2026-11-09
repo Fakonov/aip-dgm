@@ -15,7 +15,7 @@
 （`pc trace sha256: f42d1802…`）。屏幕版式按真机玻璃实测还原：一块玻璃三条带 ——
 上下各 4 枚功能图标（独立 LCD 段，由 ROM 自己点亮）、中间 32×16 点阵。
 
-**v2.0** · MIT · 不含任何 Bandai 的固件或美术资源（ROM 需自备，见 `roms/README.md`）
+**v2.0.1** · MIT · 不含任何 Bandai 的固件或美术资源（ROM 需自备，见 `roms/README.md`）
 
 ## 特性
 
