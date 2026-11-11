@@ -1,10 +1,13 @@
 # 交接单（新会话先读这一页）
 
+> **本阶段交接（v2.1.0 收口，2026-11-11）**：先读 `docs/HANDOVER-2026-11-11.md` ——
+> 三十秒速览、设备当前状态（整片擦除后无 ROM 无存档）、下一步、以及 8 条硬约束。
 > 项目：`<home>\digimon-passport`
 > 目标机：FoloToy AI Passport（ESP32-C3，240×320 面板已按横屏使用）
 > 详细历史：`PROGRESS.md`（round 1–65，含每次真机日志）；设计稿：`docs/icons/DESIGN.md`
 > **复盘与方法论**：`docs/RETROSPECTIVE.md`（十条可复用方法、工具清单、坑的分类学、开工清单）
 > **v2.0.1 全项目审计**：`docs/AUDIT-2.0.1.md`（flash/RAM/每帧分账、实测优化清单、可复现实验）；
+> **v2.1.0 第二轮审计**：`docs/AUDIT-R2.md`（落地复核、四处新发现、合并构建实测）；
 > **可复用方法论**：`docs/METHODOLOGY.md`（性能审计七步法、度量门禁矩阵、反模式清单）
 > PC 工具：`tools/digimon_studio.html`（说明见 `docs/studio-tool.md`）
 > **当前指纹**：固件 `0xFC500` = 1,033,472 B，SHA256 `94d32e38…`
@@ -47,6 +50,27 @@
 > `STATE` 全 0（age=0）、`RAM` 全 0；设备 flash 回读 `esp_app_desc.version="2.1.0"`（magic `0xABCD5432`）。
 > 擦除前的一切（5 个 ROM + 34 h 存档 + 设置）**只剩** `docs/backup/flash-2026-11-11-round114-full8m.bin`；
 > 要 ROM 回来：从 `桌面\dsh sth\tama dg roms\digimon roms\` 用工具重传，或整片回滚那份备份。
+> **v2.1.0 已发布（2026-11-11 22:3x）**：提交 `3f8df27`、tag `v2.1.0`（annotated）已推到
+> <https://github.com/Fakonov/aip-dgm>；Release **id 441756617**，四资产
+> full 3,211,264 / app 747,920 / html 120,169 / source 1,161,637（全部 `uploaded`）。
+> 包：`release\aip-dgm-v2.1`（28 项）与 `release\aip-dgm-v2.1-github`（189 项），
+> `check_release.py` 全过。**社区侧未投**：2.0.1 的 revision 5167 仍 pending。
+> **round 118（2026-11-11 22:4x，PC 端，未刷机）**：`tools/digimon_studio.html` 修五处 ——
+> ① `currentVersion()` 把已经是数字的 `crc` 又 `parseInt(...,16)` 一次（`0x27df4fd6` 读成 `0x670662614`），
+> **CRC 分支从来没命中过**，版本识别全靠名字子串；② 网页不解析固件的 `ROMBOOT <slot> <name>`，
+> 切槽后整页不跟手 → 新增 `switchRomView()` + 切后重读 `ROMINFO/AGES/STATE/RAM/CARDL`；
+> ③ `setVersion()` 漏画卡片名册，切到 V2/V3 后卡片页还是上个版本的 12 只；
+> ④ 卡架按卡自己的 `ver` 查表（`speciesOfVer/artOfVer/tableOf`），跨版本卡不再串名；
+> ⑤ 卡片页加 `V1..V4` 版本按钮（默认跟随 ROM，点一下锁定、再点放回；载入已存卡自动锁到卡的版本）
+> → **不切 ROM 也能造任意版本的卡**；⑥ `ROMSLOT/ROMCUR/ROMBOOT/ROMBEGIN` 的 ROM 名从 `(\S+)` 改成
+> `(.+?)`，名字含空格不再整条失配（以前会显示成空槽）。
+> 实测（headless Edge + 临时注入钩子）：四版名册各 12 只全对、`ROMBOOT 2 digimonv3` → `V3`、
+> 同 slot 三张 `ver=0/1/2` 显示「亚古兽 | 加布兽 | 巴达兽」、`ROMSLOT 0 digimon v2 …` 能解析。
+> 文件 407,641 → **413,439 B**（+5,798），固件 0 字节，页面 0 个 JS 异常。复现：`tools/audit/r3/pc_probe.ps1`。
+> **同一轮补记**：卡名不再靠 `dataset.touched` 粘住 —— 名字框默认**只读跟随图鉴**（选哪只就是哪只的
+> 英文名），勾「自定义名字」才能手改、取消勾选立刻回默认；载入已存的卡时，名字不是默认名就自动勾上开关。
+> 单一写入口 `syncNameField()`，点卡片 / 切 V1–V4 / 切 ROM 都会跟上。
+> 已知：`DigimonV1ES`（`0xBD56E590`）仍无规则表，会显示「暂无规则表（显示 V1）」。
 > **round 94/95/96 改动**（2026-11-08，已刷 COM5）：SKIP 加 12H/24H、背光默认 70 %、存档 60 s→5 min（**round 104 已按用户要求改回 60 s**）、
 > 石墙 tile 192→128（密度按实机反馈三次调，定稿 `ROWS=3` / 每行一条缝 / 线宽 5 px；
 > round 103 把 tile 边界那条横缝改成 ±3 px 波浪并用 wrap 画法补满 5 px，其余横缝/竖缝没动）、墨色 `#1B2417`→`#2E382C`、删 592 项死色表；

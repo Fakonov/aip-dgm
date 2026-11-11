@@ -174,6 +174,10 @@ pre{max-width:100%}
 .bt-tab b{font-size:13.5px}
 .bt-tab span{font-size:11px;opacity:.7;line-height:1.5}
 .bt-tab.on{border-color:#e8873f;box-shadow:0 0 0 3px rgba(232,135,63,.18);background:#fff6ec}
+.bt-ver{font:inherit;font-size:11.5px;font-weight:700;letter-spacing:.06em;cursor:pointer;
+  padding:4px 11px;border-radius:999px;border:1px solid #d8d2c0;background:#fbf9f0;color:inherit}
+.bt-ver:hover{border-color:#c9c2ac}
+.bt-ver.on{border-color:#e8873f;background:#fff6ec;box-shadow:0 0 0 3px rgba(232,135,63,.16)}
 .bt-shelf{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
 .bt-slot{display:flex;flex-direction:column;gap:2px;padding:8px 10px;border-radius:11px;cursor:pointer;
   border:1px solid #ded8c6;background:#fbf9f0}
@@ -200,6 +204,8 @@ pre{max-width:100%}
 .bt-pick .nm{font-size:12.5px;font-weight:600;line-height:1.25}
 .bt-pick .en{font-size:10.5px;opacity:.6}
 .bt-pick-info{font-size:12px;margin:9px 0 0;opacity:.85}
+/* 名字框：开关关着时只读（跟着图鉴走），灰底提示"这不是手输的" */
+#btCardName[readonly]{background:#f1eee2;color:#6f6a5a;cursor:default}
 .bt-state{font-size:12px;opacity:.85;margin:8px 0}
 .bt-frames{font-family:ui-monospace,Consolas,monospace;font-size:12px;line-height:1.8}
 .bt-saved{margin:10px 0;padding:10px 12px;border-radius:11px;background:#fff6ec;
@@ -511,11 +517,21 @@ DUMP / PET / SKIP &lt;分钟&gt;      诊断 / 摘要 / 跳过时间</pre>
       </div>
 
       <div class="bt-step">
-        <div class="bt-step-h">② 这一格放谁（按当前 ROM 版本自动切 12 只）</div>
+        <div class="bt-step-h">② 这一格放谁</div>
+        <div class="row" style="margin:0 0 9px;gap:6px;align-items:center;flex-wrap:wrap">
+          <span class="hint" style="margin:0">对手版本</span>
+          <button class="bt-ver on" data-ver="0" title="V1 的 12 只">V1</button>
+          <button class="bt-ver" data-ver="1" title="V2 的 12 只">V2</button>
+          <button class="bt-ver" data-ver="2" title="V3 的 12 只">V3</button>
+          <button class="bt-ver" data-ver="3" title="V4 的 12 只">V4</button>
+          <span id="btCardVerHint" class="hint" style="margin:0">跟随 ROM</span>
+        </div>
         <div id="btCardRoster" class="bt-roster"></div>
         <div class="row" style="margin:9px 0 0;gap:10px;align-items:center;flex-wrap:wrap">
-          <label class="hint">名字 <input id="btCardName" maxlength="10" placeholder="10 字符内"
+          <label class="hint">名字 <input id="btCardName" readonly maxlength="10" placeholder="10 字符内"
                  style="width:118px;padding:4px 6px;border-radius:8px;border:1px solid #d8d2c0"></label>
+          <label class="hint" title="关掉时名字跟着上面的图鉴自动走；打开才能手改。设备只存 ASCII，最多 10 字符">
+            <input type="checkbox" id="btNameCustom"> 自定义名字</label>
           <label class="hint">effort
             <select id="btCardEffort" style="padding:4px 6px;border-radius:8px;border:1px solid #d8d2c0">
               <option value="0">0</option><option value="1">1</option><option value="2">2</option>
@@ -822,17 +838,33 @@ function setVersion(name, render) {
     if (state.pet) renderCare(); else renderTree(-1);
     /* 对手名册跟着 ROM 版本走（V1/V2/V3/V4 的物种不同） */
     try { renderRoster(); } catch (e) { /* battle page not parsed yet */ }
+    /* 离线卡片页的名册和卡架也要跟着换 —— 以前只画连线对战那一份，切到
+     * V2/V3 后卡片页还停在上一个版本的 12 只（round 118 修） */
+    try { renderCardRoster(); renderShelf(); } catch (e) { /* card rack not parsed yet */ }
   }
   return true;
 }
 function currentVersion() {
   const slot = state.romSlots && state.romSlots[state.romCur];
-  const crc = slot && slot.crc ? parseInt(slot.crc, 16) : 0;
+  /* ROMSLOT 解析时 crc 已经是数字（parseInt(...,16) >>> 0）。旧代码在这里又
+   * parseInt(slot.crc, 16) 一次 = 先把十进制字符串化再按十六进制读，结果永远
+   * 对不上 0x19a9e54e 之类的常量 —— CRC 分支从未命中，全靠名字子串兜底
+   * （round 118 修）。 */
+  const crc = slot && slot.valid !== false ? (Number(slot.crc) >>> 0) : 0;
   return versionFromRom(state.rom, crc);
 }
 function syncVersion(render) {
   const want = currentVersion();
   if (want) setVersion(want, render);
+}
+
+/* 当前槽变了（ROMCUR / ROMBOOT）：标签、槽表、规则表、卡片名册一起翻页。 */
+function switchRomView(render) {
+  syncVersion(render);
+  const now = state.romCur >= 0;
+  if ($("romTag")) $("romTag").textContent = now ? "当前 " + state.rom : "NO ROM";
+  if ($("curTag")) $("curTag").textContent = now ? state.rom : "—";
+  renderRomSlots();
 }
 
 
@@ -1137,7 +1169,7 @@ function parseProtocol(line) {
     renderRomSlots();
     return true;
   }
-  if ((m = /^ROMSLOT (\d+) (\S+) (\d+) ([0-9a-fA-F]{8}) (\S+)/.exec(line))) {
+  if ((m = /^ROMSLOT (\d+) (.+?) (\d+) ([0-9a-fA-F]{8}) (\S+)\s*$/.exec(line))) {
     const i = parseInt(m[1], 10);
     state.romSlots[i] = {
       slot: i, valid: m[2] !== "-", name: m[2] === "-" ? "-" : m[2],
@@ -1146,14 +1178,30 @@ function parseProtocol(line) {
     renderRomSlots();
     return true;
   }
-  if ((m = /^ROMCUR (-?\d+) (\S+)/.exec(line))) {
+  if ((m = /^ROMCUR (-?\d+)(?: (.+?))?\s*$/.exec(line))) {
+    state.romCur = parseInt(m[1], 10);
+    state.rom = state.romCur >= 0 ? (m[2] || null) : null;
+    switchRomView(true);
+    return true;
+  }
+  if (/^ROMBOOT NONE/.test(line)) {
+    toast("这个槽是空的，启动不了", true);
+    return true;
+  }
+  if ((m = /^ROMBOOT (-?\d+)(?: (.+?))?\s*$/.exec(line))) {
+    /* 固件切槽只回 ROMBOOT <idx> <name>，不回 ROMCUR。旧代码没人接这一行，
+     * 所以点「启动」之后 romTag、规则表、卡片名册、STATE 全停在上一个 ROM。
+     * 换 ROM 等于换存档：STATE / AGES / RAM / CARDL 全部作废，必须重读
+     * （round 118 修）。 */
     const idx = parseInt(m[1], 10);
+    if (idx < 0) { toast("设备没切过去", true); return true; }
     state.romCur = idx;
-    state.rom = idx >= 0 ? m[2] : null;
-        syncVersion(true);
-    $("romTag").textContent = idx >= 0 ? "当前 " + m[2] : "NO ROM";
-    $("curTag").textContent = idx >= 0 ? m[2] : "—";
-    renderRomSlots();
+    state.rom = m[2] || (state.romSlots[idx] && state.romSlots[idx].name) || state.rom;
+    switchRomView(true);
+    log("设备已切到槽 " + idx + " · " + state.rom, "s");
+    setTimeout(() => {
+      send("ROMINFO"); send("AGES"); send("STATE"); send("RAM"); send("CARDL");
+    }, 300);
     return true;
   }
   if (/^ROMREADY /.test(line)) {
@@ -1171,7 +1219,7 @@ function parseProtocol(line) {
     if (state.waitRomResult) { state.waitRomResult(false); state.waitRomResult = null; }
     return true;
   }
-  if ((m = /^ROMBEGIN (\d+) (\d+) ([0-9a-fA-F]{8}) (\S+)/.exec(line))) {
+  if ((m = /^ROMBEGIN (\d+) (\d+) ([0-9a-fA-F]{8}) (.+?)\s*$/.exec(line))) {
     state.romCollect = { slot: +m[1], len: +m[2], crc: parseInt(m[3], 16) >>> 0, name: m[4], chunks: [] };
     return true;
   }
@@ -1840,8 +1888,44 @@ const cardSlots = new Array(8).fill(null);   /* {slot, effort, ver, name} | null
 const cardState = { sel: 0, pickSlot: 3, fighting: false, saveTimer: null, pollTimer: null, lastNote: "" };
 
 const VER_INDEX = { V1: 0, V2: 1, V3: 2, V4: 3 };
+const VER_NAMES = ["V1", "V2", "V3", "V4"];
 
-function cardVerIndex() { return VER_INDEX[ACTIVE_VERSION] ?? 0; }
+/* 造卡用的版本。默认跟随当前运行的 ROM；点过版本按钮就锁定，直到再点「跟随
+ * ROM」或者载入一张别的版本的卡（round 118）。 */
+let CARD_VER = 0;
+let CARD_VER_LOCKED = false;
+
+function cardVerIndex() {
+  return CARD_VER_LOCKED ? (CARD_VER & 3) : (VER_INDEX[ACTIVE_VERSION] ?? 0);
+}
+/* 按指定版本取表：卡架里的卡自带 ver，不能拿当前 ROM 的表去解释它。 */
+function tableOf(ver) {
+  const key = VER_NAMES[ver & 3] || ACTIVE_VERSION;
+  return VERSIONS[key] || VERSIONS[ACTIVE_VERSION] || VERSIONS.V1;
+}
+function speciesOfVer(slot, ver) {
+  const t = tableOf(ver);
+  return t.species.find((s) => s.slot === slot) || { slot, en: "Slot " + slot, zh: "未知" };
+}
+function artOfVer(slot, ver) { return tableOf(ver).art[slot] || ""; }
+
+/* 卡名：默认取图鉴里的英文名（固件用 %10s 存，只收 ASCII）。
+ * 名字框只有这一个写入口 —— 开关关着就跟着选中的兽走，开着才认手输的值。 */
+function defaultCardName(slot, ver) {
+  return speciesOfVer(slot, ver).en.toUpperCase().slice(0, 10);
+}
+function nameIsCustom() {
+  const cb = $("btNameCustom");
+  return !!(cb && cb.checked);
+}
+function syncNameField() {
+  const nm = $("btCardName");
+  if (!nm) return;
+  const custom = nameIsCustom();
+  nm.readOnly = !custom;
+  if (!custom) nm.value = defaultCardName(cardState.pickSlot, cardVerIndex());
+}
+
 function speciesOf(slot) { return SPECIES.find((s) => s.slot === slot) || { zh: "?", en: "?" }; }
 
 function setBattlePane(mode) {
@@ -1862,7 +1946,7 @@ function renderShelf() {
     if (!c) return '<div class="bt-slot empty' + on + '" data-slot="' + i + '">' +
       '<div class="n">CARD ' + (i + 1) + "</div><div class=\"nm\">＋ 空槽</div>" +
       '<div class="sub">点它填一张</div></div>';
-    const sp = speciesOf(c.slot);
+    const sp = speciesOfVer(c.slot, c.ver);
     return '<div class="bt-slot' + on + '" data-slot="' + i + '">' +
       '<div class="n">CARD ' + (i + 1) + "</div>" +
       '<div class="nm">' + (c.name || sp.zh) + "</div>" +
@@ -1879,9 +1963,10 @@ function renderShelf() {
 function renderCardRoster() {
   const box = $("btCardRoster");
   if (!box) return;
-  const list = SPECIES.filter((s) => s.slot >= 3 && s.slot <= 14);
+  const ver = cardVerIndex();
+  const list = tableOf(ver).species.filter((s) => s.slot >= 3 && s.slot <= 14);
   box.innerHTML = list.map((s) => {
-    const art = EVO_ART[s.slot] || "";
+    const art = artOfVer(s.slot, ver);
     return '<div class="bt-pick' + (s.slot === cardState.pickSlot ? " on" : "") +
       '" data-slot="' + s.slot + '">' + (art ? '<img alt="" src="' + art + '">' : "") +
       "<div><div class=\"nm\">" + s.zh + '</div><div class="en">' + s.en + "</div></div></div>";
@@ -1889,47 +1974,58 @@ function renderCardRoster() {
   box.querySelectorAll(".bt-pick").forEach((el) => {
     el.onclick = () => {
       cardState.pickSlot = +el.dataset.slot;
-      const sp = speciesOf(cardState.pickSlot);
-      const nm = $("btCardName");
-      if (nm && !nm.dataset.touched) nm.value = sp.en.toUpperCase().slice(0, 10);
       const ef = $("btCardEffort");
       if (ef && !ef.dataset.touched) ef.value = String(effortFor(cardState.pickSlot));
-      renderCardRoster();
-      renderCardEdit();
+      renderCardRoster();   /* 内部会 renderCardEdit → syncNameField，名字自动跟着这支兽 */
     };
   });
+  document.querySelectorAll(".bt-ver").forEach((el) =>
+    el.classList.toggle("on", +el.dataset.ver === ver));
+  const hint = $("btCardVerHint");
+  if (hint) hint.textContent = "V" + (ver + 1) +
+    (CARD_VER_LOCKED ? "（已锁定，再点一次跟随 ROM）" : "（跟随 ROM）");
   renderCardEdit();
 }
 
 function renderCardEdit() {
-  const ef = $("btCardEffort"), nm = $("btCardName");
-  /* First paint: seed effort and the name from the species the cursor is on.
-   * After that only the user's own edits change them (dataset.touched). */
+  const ef = $("btCardEffort");
+  const ver = cardVerIndex();
+  /* effort 还是"用户没动过就按阶段猜"；名字交给 syncNameField，它看开关 */
   if (ef && !ef.dataset.touched) ef.value = String(effortFor(cardState.pickSlot));
-  if (nm && !nm.dataset.touched) nm.value = speciesOf(cardState.pickSlot).en.toUpperCase().slice(0, 10);
+  syncNameField();
 
   const el = $("btCardEdit");
   if (!el) return;
-  const sp = speciesOf(cardState.pickSlot);
+  const sp = speciesOfVer(cardState.pickSlot, ver);
   const c = cardSlots[cardState.sel];
+  /* 卡架上那张卡按它自己的 ver 解释，不能借当前版本的表 */
+  const cur = c ? speciesOfVer(c.slot, c.ver) : null;
   el.innerHTML = "格子 <b>CARD " + (cardState.sel + 1) + "</b>：现在" +
-    (c ? "放着 <b>" + (c.name || sp.zh) + "</b>（" + c.slot.toString(16).toUpperCase() + "/" + c.effort +
+    (c ? "放着 <b>" + (c.name || cur.zh) + "</b>（" + c.slot.toString(16).toUpperCase() + "/" + c.effort +
         " V" + (c.ver + 1) + "）" : "<b>空</b>") +
     "；将写入 <b>" + sp.zh + "</b> slot " + cardState.pickSlot.toString(16).toUpperCase() +
     " · effort " + (ef ? ef.value : effortFor(cardState.pickSlot)) +
-    " · V" + (cardVerIndex() + 1);
+    " · V" + (ver + 1);
 }
 
 function loadCardIntoEditor() {
   const c = cardSlots[cardState.sel];
-  const ef = $("btCardEffort"), nm = $("btCardName");
+  const ef = $("btCardEffort"), nm = $("btCardName"), cb = $("btNameCustom");
   if (c) {
     cardState.pickSlot = c.slot;
+    /* 编辑已存的卡：版本跟着这张卡走，否则「存到这一格」会把 V2 的卡悄悄
+     * 改写成当前 ROM 的版本 */
+    CARD_VER = c.ver & 3;
+    CARD_VER_LOCKED = true;
     if (ef) { ef.value = String(c.effort); ef.dataset.touched = "1"; }
-    if (nm) { nm.value = c.name; nm.dataset.touched = "1"; }
+    /* 卡里存的名字不是这只兽的默认名 → 当年手改过，自动把开关拨到「自定义」 */
+    const dflt = defaultCardName(c.slot, c.ver);
+    if (cb) cb.checked = !!(c.name && c.name !== dflt);
+    if (nm) nm.value = c.name || dflt;
   } else {
     if (ef) { ef.value = String(effortFor(cardState.pickSlot)); delete ef.dataset.touched; }
-    if (nm) { nm.value = speciesOf(cardState.pickSlot).en.toUpperCase().slice(0, 10); delete nm.dataset.touched; }
+    if (cb) cb.checked = false;   /* 空格子回到"名字跟图鉴走" */
+    if (nm) nm.value = defaultCardName(cardState.pickSlot, cardVerIndex());
   }
   renderShelf();
   renderCardRoster();
@@ -1939,7 +2035,7 @@ function cardName() {
   const raw = ($("btCardName") ? $("btCardName").value : "").trim();
   /* the firmware parses the name with %10s: one token, no spaces, ASCII only */
   const clean = raw.replace(/\s+/g, "").replace(/[^\x20-\x7E]/g, "").slice(0, 10);
-  return clean || speciesOf(cardState.pickSlot).en.toUpperCase().slice(0, 10);
+  return clean || defaultCardName(cardState.pickSlot, cardVerIndex());
 }
 
 async function cardSave(silent) {
@@ -2333,6 +2429,15 @@ document.querySelectorAll(".bt-mode").forEach((el) => {
 document.querySelectorAll(".bt-tab").forEach((el) => {
   el.onclick = () => setBattlePane(el.dataset.btmode);
 });
+/* 对手版本：点一次锁定，再点同一个 = 放开、重新跟随当前 ROM */
+document.querySelectorAll(".bt-ver").forEach((el) => {
+  el.onclick = () => {
+    const v = +el.dataset.ver;
+    if (CARD_VER_LOCKED && v === CARD_VER) CARD_VER_LOCKED = false;
+    else { CARD_VER = v; CARD_VER_LOCKED = true; }
+    renderCardRoster();
+  };
+});
 if ($("btnCardReload")) $("btnCardReload").onclick = () => send("CARDL");
 if ($("btnCardSave")) $("btnCardSave").onclick = () => { cardSave(false).catch((e) => toast("这一步没做完：" + e.message, true)); };
 if ($("btnCardDel")) $("btnCardDel").onclick = () => { cardErase().catch((e) => toast("这一步没做完：" + e.message, true)); };
@@ -2344,7 +2449,9 @@ if ($("btnCardStop")) $("btnCardStop").onclick = async () => {
   battleSetState("已停止卡片对战（CARDOFF）。");
 };
 if ($("btCardEffort")) $("btCardEffort").onchange = () => { $("btCardEffort").dataset.touched = "1"; renderCardEdit(); };
-if ($("btCardName")) $("btCardName").oninput = () => { $("btCardName").dataset.touched = "1"; };
+/* 开关本身是名字框的唯一开关：关掉 → 只读并回到图鉴默认名；打开 → 保留当前值随便改 */
+if ($("btNameCustom")) $("btNameCustom").onchange = () => renderCardEdit();
+if ($("btCardName")) $("btCardName").oninput = () => renderCardEdit();
 renderCardRoster();
 renderShelf();
 setBattlePane("card");
@@ -2536,8 +2643,10 @@ if (/[?&]demo=1/.test(location.search)) {
     stage: "18:42", next: "78:13", left: "3571", age: "105995",
   };
   for (let i = 0; i < 256; i++) state.ram[i] = (i * 7 + (i >> 3)) & 0xF;
-  syncVersion(false);
-  renderRomSlots(); renderCare(); renderRam();
+  /* 以前这里是 syncVersion(false)：切了表但不重画，?demo=1&rom=V2 的名册
+   * 会停在 V1。走同一条切槽路径，卡片名册和进化表一起翻页。 */
+  switchRomView(true);
+  renderRam();
   log("示例数据已载入（?demo=1 · " + demoRom + "）", "s");
 }
 })();
