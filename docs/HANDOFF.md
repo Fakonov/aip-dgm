@@ -2,7 +2,7 @@
 
 > **本阶段交接（v2.1.0 收口，2026-11-11）**：先读 `docs/HANDOVER-2026-11-11.md` ——
 > 三十秒速览、设备当前状态（整片擦除后无 ROM 无存档）、下一步、以及 8 条硬约束。
-> 项目：`<home>\digimon-passport`
+> 项目：`C:\Users\DuWeisi\digimon-passport`
 > 目标机：FoloToy AI Passport（ESP32-C3，240×320 面板已按横屏使用）
 > 详细历史：`PROGRESS.md`（round 1–65，含每次真机日志）；设计稿：`docs/icons/DESIGN.md`
 > **复盘与方法论**：`docs/RETROSPECTIVE.md`（十条可复用方法、工具清单、坑的分类学、开工清单）
@@ -70,6 +70,12 @@
 > **同一轮补记**：卡名不再靠 `dataset.touched` 粘住 —— 名字框默认**只读跟随图鉴**（选哪只就是哪只的
 > 英文名），勾「自定义名字」才能手改、取消勾选立刻回默认；载入已存的卡时，名字不是默认名就自动勾上开关。
 > 单一写入口 `syncNameField()`，点卡片 / 切 V1–V4 / 切 ROM 都会跟上。
+> **v2.1.0 的 PC 端已就地替换（2026-11-11 23:0x）**：公开树无图版 120,169 → **125,967 B**、
+> 本地带图版 407,641 → **413,439 B**、`source-and-tools.zip` → **1,168,860 B**；
+> 提交 `835c928` 已推 `main`，Release 441756617 的 html 与 zip 两个资产删旧传新（HTTP 201，
+> 拉回核 SHA256 一致），四个资产齐全。重铺脚本 `tools/refresh_pc_tool.py`（带 `--dry`）。
+> ⚠️ `build_public_tree.py` 是全量重铺，会把工作区里无关的实验文件（`vpet_native.c` 的
+> "Enhanced 20th" 原型、`pet_*.h`）一起带进公开树 —— 重铺后先 `git status` 确认提交范围。
 > 已知：`DigimonV1ES`（`0xBD56E590`）仍无规则表，会显示「暂无规则表（显示 V1）」。
 > **round 94/95/96 改动**（2026-11-08，已刷 COM5）：SKIP 加 12H/24H、背光默认 70 %、存档 60 s→5 min（**round 104 已按用户要求改回 60 s**）、
 > 石墙 tile 192→128（密度按实机反馈三次调，定稿 `ROWS=3` / 每行一条缝 / 线宽 5 px；
@@ -121,7 +127,7 @@
 > con_printf 缓冲区）和 PC 工具（存档直连、右侧日志栏、一堆修复）。
 > **要最新交付物看 `test\20261104-2035\`，别从 v4 里拿**
 > 上一轮会话日志（只用于考古，别当记忆用）：
-> 上一轮会话日志（内部文件，不随公开仓库分发）
+> `~/.dsh/sessions/--C-Users-DuWeisi-Documents-deepseek-harness-default-workspace--/session-764e0072-8790-4479-8214-2cee1d639bbd/session.v4.jsonl.zstd`
 > （zstd 分帧，逐帧 `zstdDecompressSync` 后拼起来就是完整 JSONL，2021 帧 / 7.3 MB / 约 4.0 M 字符）
 
 ---
@@ -257,7 +263,7 @@
 ### 走数据线（**已验证，推荐当主力**）
 
 ```powershell
-cd <home>\digimon-passport
+cd C:\Users\DuWeisi\digimon-passport
 python tools\dg_link_pair.py --a COM5 --b COM4 --passive --initiator none --seconds 180
 ```
 
@@ -578,7 +584,7 @@ ESP-NOW 旧实现，`M4B BUTTONS-ONLY: PASS` 过了多次。
 
 ```powershell
 # 编译（本机 PowerShell 5.1 下 build.ps1 会被 export.ps1 的 stderr 打断，用这个包装脚本）
-powershell -NoProfile -ExecutionPolicy Bypass -File <home>\digimon-passport\build_local.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File C:\Users\DuWeisi\digimon-passport\build_local.ps1
 
 # 合并镜像（idf.py build 不会重建 full.bin！模拟器要用它）
 python tools\mk_full_bin.py
@@ -594,7 +600,7 @@ python tools\mk_full_bin.py --out docs\ui-rom\full-with-v1.bin --rom "0=firmware
 > 用 venv 的 python 直调 `idf.py`。**工具升级后要改脚本里的版本号目录**。
 > 手工作业版（排查用）：
 > ```powershell
-> $IDF='<home>\idf-setup\esp-idf-5.5.3'; $T='<home>\.espressif'
+> $IDF='C:\Users\DuWeisi\idf-setup\esp-idf-5.5.3'; $T='C:\Users\DuWeisi\.espressif'
 > $PY="$T\python_env\idf5.5_py3.11_env\Scripts\python.exe"
 > $env:IDF_PATH=$IDF; $env:IDF_TOOLS_PATH=$T
 > $env:Path="$T\tools\riscv32-esp-elf\esp-14.2.0_20251107\riscv32-esp-elf\bin;$T\tools\ninja\1.12.1;$T\tools\cmake\3.30.2\bin;$T\tools\ccache\4.12.1;$T\tools\idf-exe\1.0.3;"+$env:Path
@@ -604,7 +610,7 @@ python tools\mk_full_bin.py --out docs\ui-rom\full-with-v1.bin --rom "0=firmware
 **烧写分两种情况，别搞混：**
 
 ```powershell
-$py = "<home>\.espressif\python_env\idf5.5_py3.11_env\Scripts\python.exe"
+$py = "C:\Users\DuWeisi\.espressif\python_env\idf5.5_py3.11_env\Scripts\python.exe"
 
 # A. 老机器第一次升到 v3（分区表变了：factory 1MB -> 2MB，多了 roms 分区）
 #    0x8000 那 4 KB 不碰 NVS，0x10000 只写 app —— 存档/设置/NVS 全保
@@ -627,7 +633,7 @@ python tools\mk_full_bin.py
 
 ROM 不进 bin 了：刷完固件屏幕就是 `NO ROM`，用 `tools/digimon_studio.html` 连上、点 ROM 槽的「上传」选 16 KB 镜像。四次上传（V1/V2/V3/V4）后菜单 `ROM` 行就能切。
 
-`python` 要用 IDF 的 venv（`<home>\.espressif\python_env\idf5.5_py3.11_env\Scripts\python.exe`），
+`python` 要用 IDF 的 venv（`C:\Users\DuWeisi\.espressif\python_env\idf5.5_py3.11_env\Scripts\python.exe`），
 系统 py311 里没有 esptool。
 
 刷机前可以先备份当前 app 分区（回滚用）：
@@ -639,7 +645,7 @@ python -m esptool --chip esp32c3 -p COM5 -b 921600 read_flash 0x10000 0x100000 d
 模拟器（无头，可截图，不需要真机）：
 
 ```powershell
-$node = "<home>\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\node\bin\node.exe"
+$node = "C:\Users\DuWeisi\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\node\bin\node.exe"
 
 # 一版通吃所有截图（todo #13 收敛后的唯一入口）
 & $node tools\dg_sim.mjs docs\ui-rom\full-sim-ac20.bin docs\ui-sim --scenario=all
@@ -664,7 +670,7 @@ ROMBOOT 切槽、ROMDEL 回到 NO ROM，最后打 `ALL ROM CHECKS PASSED`。
 两者都需要**仿真专用构建**（console 走 UART0）：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File <home>\digimon-passport\build_sim.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File C:\Users\DuWeisi\digimon-passport\build_sim.ps1
 python tools\mk_full_bin.py --build firmware\digimon-passport\build-sim --out docs\ui-rom\full-sim-norom.bin
 ```
 
@@ -691,12 +697,12 @@ python tools\mk_full_bin.py --build firmware\digimon-passport\build-sim --out do
 
 **仓库外的硬依赖（换机器要改脚本里的路径）**：
 
-- ROM 样本 `<home>\Desktop\dsh sth\tama dg roms\digimon\digimon.bin`
+- ROM 样本 `C:\Users\DuWeisi\Desktop\dsh sth\tama dg roms\digimon\digimon.bin`
   —— `src/test_core.c` 的 `k_rom_path` 是硬编码的，缺了它 test_core 直接 `cannot open ROM`
-- 仿真器 `<home>\passport-sim\FoloToy-Passport-Simulator-main`
+- 仿真器 `C:\Users\DuWeisi\passport-sim\FoloToy-Passport-Simulator-main`
   —— `tools/dg_sim_*.mjs` 顶部 `const SIM = '…'` 硬编码，缺了 wasm 就 import 失败
 - `firmware/digimon-passport/main/roms/` 下三个 16 KB 镜像是测试/仿真副本，**不入库**（见 `.gitignore`）
-- V4 样本 `<home>\Desktop\dsh sth\tama dg roms\digimon roms\DigimonV4J.bin`
+- V4 样本 `C:\Users\DuWeisi\Desktop\dsh sth\tama dg roms\digimon roms\DigimonV4J.bin`
   —— 16 KB / SHA-256 `3b7eae59a7469e94…` / CRC32 `27df4fd6`；**不入库**，也不在 v5 发布包里。
   真机 slot 4 上另有一份同名镜像（CRC 相同），`ROMBOOT 4` 可切
 
@@ -1049,7 +1055,7 @@ python tools\mk_full_bin.py --build firmware\digimon-passport\build-sim --out do
 0. **联机对战（D-Link）M0 已打通（2026-11-06）**——调研见 `docs/LINK-BATTLE-FEASIBILITY.md`，
    路线图见 `docs/ROADMAP-BATTLE.md`，M0 报告 `docs/M0A-BRICKEMUPY-LINK.md`。
    三个目标：网页端对战 / 离线卡片对战 / 双机联机；共用底座（核 P2.0 注入 + 波形层 + 传输抽象）。
-   **A：参考实现能收帧**。BrickEmuPy 双实例（脚本 `<home>\brickemupy\m0a\`）
+   **A：参考实现能收帧**。BrickEmuPy 双实例（脚本 `C:\Users\DuWeisi\brickemupy\m0a\`）
    在 0.605 s 内走完 `A1 3FC0 → B1 3FC0 → A2 BF40 → B2 7F80`（线上字节；ROM 看到 `03/03/02/01`），
    26 s 对战动画 + 6 s 结果页后回主屏，`RAM 0x33` 0→1；角色互换完全对称。
    **B：C 核的根因是探针自己的 bug**。`src/battle_host.c` 回放帧时极性写反了
@@ -1125,7 +1131,7 @@ python tools\mk_full_bin.py --build firmware\digimon-passport\build-sim --out do
 
 - 主分支模型：`main` 只与上游同步，功能改动走 `feature/*`（本项目是 fork，实际一直在主工作区改）
 - 每次改动后跑 `test_core`（`src/` 里 `gcc -O2 -o test_core.exe test_core.c digimon_core.c`），必须 `ALL CHECKPOINTS MATCH`
-  （本机 gcc 在 `<home>\w64devkit\bin\gcc.exe`）
+  （本机 gcc 在 `C:\Users\DuWeisi\w64devkit\bin\gcc.exe`）
 - 碰 ROM 时间 / 进化 / 存档相关的代码，另外跑 `src/evo_probe.exe <rom.bin>`：A 组（停在 next−2）
   必须 `EVOLVED`，B 组（停在 next+5）必须 `NO EVOLUTION`。这是进化语义的回归，比看日志可靠
 - **stage / next 的 hour 是 8-bit 二进制，只有分钟是 BCD**；`next` 占 4C–4F 四个 nibble。
@@ -1139,7 +1145,7 @@ python tools\mk_full_bin.py --build firmware\digimon-passport\build-sim --out do
   3. 渲染：Edge headless 截图 `file:///…/digimon_studio.html?demo=1&tab=rom|care|debug`，
      加 `&log=1` 展开日志栏。**截图只核对布局关系，不量像素**（坑 31）
 - 改文本（`.md` / `.c` / `.html`）用 `edit` 工具或 python；**PowerShell 的 `-replace` 会毁掉中文**（坑 30）
-- **发布包脱敏只替换前缀**：`<home>` → `<home>`，**不要连后面的路径一起吞掉**。
+- **发布包脱敏只替换前缀**：`C:\Users\DuWeisi` → `<home>`，**不要连后面的路径一起吞掉**。
   曾经整段替换成 `<home>`，`esptool` 那条命令被切成 `$py = <home>` 这种残句（引号都没闭合），
   复制到终端直接报错；打包后跑 `python tools\check_release.py`，坏占位、断链、校验和不符全都会被抓出来
 - 固件改动后固件三件套：`test_core`（必须 ALL CHECKPOINTS MATCH）→ 编译 → 刷机核对字节数 →
