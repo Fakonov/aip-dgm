@@ -54,7 +54,11 @@
 > <https://github.com/Fakonov/aip-dgm>；Release **id 441756617**，四资产
 > full 3,211,264 / app 747,920 / html 120,169 / source 1,161,637（全部 `uploaded`）。
 > 包：`release\aip-dgm-v2.1`（28 项）与 `release\aip-dgm-v2.1-github`（189 项），
-> `check_release.py` 全过。**社区侧未投**：2.0.1 的 revision 5167 仍 pending。
+> `check_release.py` 全过。
+> **社区（2026-11-11 23:1x 更新）**：2.0.1 的 revision **5167 已审核通过**（`approved`，玩家现在下载到的就是它）。
+> v2.1.0 已于 23:1x 提交：**revision 5383，status `pending`**，固件 `dd8c22bd…`（无 ROM 整片 3,211,264 B），
+> 三张 3:4 玩法图 + 封面，`source-url` 指本仓库；`projects` 复查三项都对上（5383 / fw 一致 / publishedRevision 仍 5167）。
+> **待审核，不是已公开**——审核通过前玩家端仍是 2.0.1。网盘里的控制台文件应更新为 `digimon_studio_V3.html`。
 > **round 118（2026-11-11 22:4x，PC 端，未刷机）**：`tools/digimon_studio.html` 修五处 ——
 > ① `currentVersion()` 把已经是数字的 `crc` 又 `parseInt(...,16)` 一次（`0x27df4fd6` 读成 `0x670662614`），
 > **CRC 分支从来没命中过**，版本识别全靠名字子串；② 网页不解析固件的 `ROMBOOT <slot> <name>`，
@@ -77,6 +81,9 @@
 > 拉回核 SHA256 一致），四个资产齐全。重铺脚本 `tools/refresh_pc_tool.py`（带 `--dry`）。
 > ⚠️ `build_public_tree.py` 是全量重铺，会把工作区里无关的实验文件（`vpet_native.c` 的
 > "Enhanced 20th" 原型、`pet_*.h`）一起带进公开树 —— 重铺后先 `git status` 确认提交范围。
+> ⚠️ **手工复制文档进公开树必须脱敏**：`Copy-Item` 会绕过 `build_public_tree.py` 的 DESENSITIZE。
+> 曾因此把 16 处 `<home>` 推上 `main`（`7446312`/`3790644`，历史里仍保留），
+> 复制后 `grep <user>` 必须为 0 再 commit；`git add -A` 也会把根目录杂物一起带上。
 > 已知：`DigimonV1ES`（`0xBD56E590`）仍无规则表，会显示「暂无规则表（显示 V1）」。
 > **round 94/95/96 改动**（2026-11-08，已刷 COM5）：SKIP 加 12H/24H、背光默认 70 %、存档 60 s→5 min（**round 104 已按用户要求改回 60 s**）、
 > 石墙 tile 192→128（密度按实机反馈三次调，定稿 `ROWS=3` / 每行一条缝 / 线宽 5 px；
