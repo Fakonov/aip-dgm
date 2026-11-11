@@ -25,7 +25,8 @@ import sys
 import strip_studio_images
 
 FW = os.path.join('firmware', 'digimon-passport')
-FW_TOP = ['.clangd', 'CMakeLists.txt', 'partitions.csv', 'sdkconfig.defaults', 'dependencies.lock']
+FW_TOP = ['.clangd', 'CMakeLists.txt', 'partitions.csv', 'sdkconfig.defaults', 'dependencies.lock',
+          'version.txt']
 FW_TREES = [('components/bsp', ('*.bin', '*.o', '*.exe')),
             ('main', ('*.bin', '*.o', '*.exe', '*.log', 'sdkconfig.old'))]
 

@@ -4,6 +4,8 @@
 > 目标机：FoloToy AI Passport（ESP32-C3，240×320 面板已按横屏使用）
 > 详细历史：`PROGRESS.md`（round 1–65，含每次真机日志）；设计稿：`docs/icons/DESIGN.md`
 > **复盘与方法论**：`docs/RETROSPECTIVE.md`（十条可复用方法、工具清单、坑的分类学、开工清单）
+> **v2.0.1 全项目审计**：`docs/AUDIT-2.0.1.md`（flash/RAM/每帧分账、实测优化清单、可复现实验）；
+> **可复用方法论**：`docs/METHODOLOGY.md`（性能审计七步法、度量门禁矩阵、反模式清单）
 > PC 工具：`tools/digimon_studio.html`（说明见 `docs/studio-tool.md`）
 > **当前指纹**：固件 `0xFC500` = 1,033,472 B，SHA256 `94d32e38…`
 > （round 104：石墙边界横缝改 ±3 px 波浪 + 自动存档 300 s→**60 s**；
@@ -13,6 +15,38 @@
 > PC 工具 407,641 B（v3.3，文案傻瓜化 + 调试按钮收进高级模式）；v8 里程碑 `0x10FA60` = 1,112,672 B
 > **已打里程碑 `milestones/2026-11-08_dual-theme/`，用户实机确认**；
 > COM4 仍是 v6 的 `0xD84B0`，用户明确不用管。
+> **round 114（2026-11-10 12:1x，已刷 COM5）**：审计后的首批优化落地 —— 固件 **`0xD84E0` = 885,984 B**
+> （−147,552 B / −14.3 %）：砖墙 ARGB8888→A8 掩码、LVGL 裁 30 项（保留 THEME_DEFAULT）、
+> 去两处 `sscanf`、`fill_audio` 定点、`SAVE_BUF_SIZE` 4 KB→1.4 KB、删 `dg_link_session.c`。
+> 验证：`test_core` 逐位一致、`dg_sim_rom.mjs` ALL PASS、砖墙区 0 像素差异；
+> 刷后 `age=122710` 存档完好、五个 ROM 槽全在。回滚：`tools/audit/pre-opt-0xFC540.bin`。
+> **round 115（2026-11-11 00:1x，审计，未改固件未刷机）**：第二轮审计 → `docs/AUDIT-R2.md`。
+> 三条先看：① `parse_num()` 有符号饱和 = **CRC ≥ 0x80000000 的 ROM 传不上去**（P0，1/2 概率）；
+> ② LVGL 11 种像素格式只用 3 种，成组关 **−101,552 B**、仿真 0 差异（P0，改 Kconfig 即可）；
+> ③ `sdkconfig.defaults` 的 8 MB **从未生效**，从零构建仍失败（脚本子串判重跳过），
+> 且 `-O2`/LV 池 40 KB/`THEME_SIMPLE` 只在生成的 `sdkconfig` 里 —— 清空重建只有 839,456 B + `-Og`。
+> 另有 `SAVEDEL` 被 `SAVE` 吃掉、`dg_op_tbl` 越界、`dg_state_load` 死循环三处待修；
+> 时钟环批量化补丁（2.08×，bit-exact）在 `tools/audit/r2/clock-batch.patch`。
+> **整片备份（2026-11-11 20:5x，COM5 读回）**：`docs/backup/flash-2026-11-11-round114-full8m.bin`
+> （8,388,608 B，SHA256 `6C7DB698…`）。校验：app 段与 `build/FoloToy-AI-Passport.bin` 逐字节相同
+> （sha256 `6b2dd044…`）→ 确认设备跑的就是 round 114 那版；NVS 16,905/24,576 B 有数据；
+> ROM 槽 0–4 全在且 data CRC / 头 CRC 全对（V1 / V2 / V3 / **V1ES `0xBD56E590`** / V4J `0x27DF4FD6`）。
+> 恢复：`esptool --chip esp32c3 -p COM5 -b 921600 write_flash 0x0 docs\backup\flash-…-full8m.bin`。
+> **当前指纹（round 116，2026-11-11 21:0x，已刷 COM5）**：**v2.1.0**，固件 **`0xB6990` = 747,920 B**
+> （−138,064 B / −15.6 % vs round 114；−27.6 % vs v2.0.1）。内容：P0 四修（`parse_unum`、
+> 取指 `& 0x0FFF`、`SAVEDEL` 顺序、`dg_state_load` 夹取）+ 时钟环批量化 + 体积三项
+> （关 8 种像素格式、LVGL 换 libc malloc、backdrop I8）+ `sdkconfig.defaults` 补全。
+> 验证：`test_core` 逐位一致、仿真 11 张 0 差异、`dg_sim_rom` 全过（含坏 CRC 仍拒 + V1ES 高 CRC 通过）、
+> 真机 ROMIN V1ES `ROMOK 5 16384 bd56e590`、`SAVEDEL 7 → ok`、SKIP 3 从 4.15 s 降到 2.93 s（1.42×）、
+> 50.00 fps、存档 `age` 连续、5 个 ROM 槽全在。从零构建 747,840 B（差 80 B / 0.011 %）。
+> **版本号**：`firmware/digimon-passport/version.txt` = `2.1.0`，`esp_app_desc.version` 已从 `"1"`
+> 变成 `2.1.0`（sha256 `D7C87516…`）。⚠️ `version.txt` 不是 ninja 依赖——**改完必须 `idf.py reconfigure`
+> 再 build**，否则 bin 逐字节不变、版本号根本没进去。changelog 见 `docs/community/changelog-{zh,en}.md`。
+> **2026-11-11 22:0x：整片擦除后全新刷入 v2.1.0**（`erase_flash` + bootloader/分区表/app 三件），
+> **按用户要求不保留存档与 ROM**。刷后实测：`ROMINFO` 8 槽全空 `ROMCUR -1`、`AGES` 全 0、
+> `STATE` 全 0（age=0）、`RAM` 全 0；设备 flash 回读 `esp_app_desc.version="2.1.0"`（magic `0xABCD5432`）。
+> 擦除前的一切（5 个 ROM + 34 h 存档 + 设置）**只剩** `docs/backup/flash-2026-11-11-round114-full8m.bin`；
+> 要 ROM 回来：从 `桌面\dsh sth\tama dg roms\digimon roms\` 用工具重传，或整片回滚那份备份。
 > **round 94/95/96 改动**（2026-11-08，已刷 COM5）：SKIP 加 12H/24H、背光默认 70 %、存档 60 s→5 min（**round 104 已按用户要求改回 60 s**）、
 > 石墙 tile 192→128（密度按实机反馈三次调，定稿 `ROWS=3` / 每行一条缝 / 线宽 5 px；
 > round 103 把 tile 边界那条横缝改成 ±3 px 波浪并用 wrap 画法补满 5 px，其余横缝/竖缝没动）、墨色 `#1B2417`→`#2E382C`、删 592 项死色表；

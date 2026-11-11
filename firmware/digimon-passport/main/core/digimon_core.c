@@ -1,4 +1,4 @@
-﻿/*
+/*
  * digimon_core.c -- Epson E0C6S48 (E0C6200 core, 4-bit MCU) emulator core.
  *
  * This is a C99 translation of the (verified) Python reference implementation
@@ -836,13 +836,32 @@ static DG_DRAM int (*const dg_op_tbl[4096])(dg_cpu *c, uint16_t op) = {
 
 #define DG_ADV()  do { c->PC = c->NPC = (uint16_t)((c->PC & 0x1000) | ((c->PC + 1) & 0xFFF)); } while (0)
 
+/* Every ROM in this project is 16 KiB, i.e. a power of two, so the modulo in the
+ * fetch path can be a mask.  RV32 has no divide instruction: `addr % size` with a
+ * runtime size compiles to two `remu`-driven sequences per fetch, and the fetch
+ * runs on every non-HALT step.  The cached size keeps dg_init()/dg_set_rom_len()
+ * unchanged and adds no field to dg_cpu, so the saved-state layout (and every
+ * existing save file) stays byte-identical.  Non-power-of-two sizes fall back to
+ * the modulo. */
+static uint32_t g_rom_cached_size;
+static uint32_t g_rom_mask;          /* size-1 when size is a power of two */
+
+static inline uint32_t dg_rom_mod(uint32_t addr)
+{
+    return g_rom_mask ? (addr & g_rom_mask) : (addr % g_rom_cached_size);
+}
+
 static int dg_rom_get_word(const dg_cpu *c, uint32_t addr)
 {
     uint32_t size = c->rom_size;
     if (size == 0 || c->rom == NULL) {
         return 0xFFFF;
     }
-    return ((int)c->rom[addr % size] << 8) | (int)c->rom[(addr + 1) % size];
+    if (size != g_rom_cached_size) {
+        g_rom_cached_size = size;
+        g_rom_mask = (size & (size - 1u)) == 0 ? size - 1u : 0u;
+    }
+    return ((int)c->rom[dg_rom_mod(addr)] << 8) | (int)c->rom[dg_rom_mod(addr + 1)];
 }
 
 /* ---------------------------------------------------------------- sound -- */
@@ -1227,6 +1246,113 @@ static inline __attribute__((always_inline)) void dg_clock_osc1(dg_cpu *c)
     if (c->timer_counter <= 0) {
         c->timer_counter += k_timer_div;
         dg_process_timer(c);
+    }
+}
+
+/* ---- AUDIT R2 prototype: settle n OSC1 ticks in one pass ----------------
+ * Same semantics as calling dg_clock_osc1() n times, provided
+ *   (a) the shared divisors (osc1_div / PTC / CTRL_OSC) do not change inside
+ *       the burst -- they cannot: only instructions change them, and no
+ *       instruction runs between two ticks;
+ *   (b) the four event handlers touch disjoint state, so firing them counter
+ *       by counter (instead of tick by tick) reaches the same final state:
+ *         dg_sound_clock     -> sound.one_shot_counter, sound.envelope_*
+ *         dg_process_ptimer  -> PT, IPT, PLATCH[R3]
+ *         dg_process_stopwatch -> SWL, SWH, ISW
+ *         dg_process_timer   -> TM, IT
+ *       No handler reads a field another handler writes, so the interleaving
+ *       order between counters is unobservable.  Within one counter the fires
+ *       still happen in ascending tick order (the k-loop below), which is what
+ *       the IT/ISW flag logic and TM depend on.
+ *
+ * Per-counter arithmetic: the counter starts in [0, div] (after the first fire
+ * it stays in [1, div]); over n ticks it loses n*rate and gains div per fire.
+ * A fire happens on the tick that takes it to <= 0, so
+ *   k = (n*rate >= counter) ? (n*rate - counter)/div + 1 : 0
+ * and the residue counter - n*rate + k*div is back in [1, div].
+ */
+static inline __attribute__((always_inline)) void dg_clock_osc1_batch(dg_cpu *c, int32_t n)
+{
+    c->osc1_ticks += (uint32_t)n;
+
+    {   /* sound: one_shot saturates at 0, envelope wraps every `cycle` ticks */
+        dg_sound *s = &c->sound;
+        if (s->one_shot_counter > 0) {
+            s->one_shot_counter -= (int)n;
+            if (s->one_shot_counter < 0) {
+                s->one_shot_counter = 0;
+            }
+        }
+        if (s->envelope_counter > 0) {
+            int32_t ec0 = s->envelope_counter;
+            if (n < ec0) {
+                s->envelope_counter = (int)(ec0 - n);
+            } else {
+                int32_t cyc = s->envelope_cycle;
+                int32_t r = n - ec0;            /* ticks after the first fire */
+                int32_t k;
+                if (cyc == 2048 || cyc == 4096) {   /* both reload values */
+                    int sh = (cyc == 2048) ? 11 : 12;
+                    k = 1 + (r >> sh);
+                    s->envelope_counter = (int)(cyc - (r & (cyc - 1)));
+                } else if (cyc > 0) {
+                    k = 1 + r / cyc;
+                    s->envelope_counter = (int)(cyc - (r % cyc));
+                } else {
+                    k = 1;                      /* reload 0: guard stops it */
+                    s->envelope_counter = 0;
+                }
+                if (s->envelope_step > 0) {
+                    s->envelope_step -= (int)k;
+                    if (s->envelope_step < 0) {
+                        s->envelope_step = 0;
+                    }
+                }
+            }
+        }
+    }
+
+    if ((c->PTC & IO_PTC) > 1) {
+        static const int k_pt_shift[8] = { 0, 0, 7, 6, 5, 4, 3, 2 };
+        int     p  = c->PTC & IO_PTC;
+        int32_t dv = k_ptimer_div[p];
+        int32_t c0 = c->ptimer_counter;
+        if (n >= c0) {
+            int32_t k = ((n - c0) >> k_pt_shift[p]) + 1;
+            c->ptimer_counter = c0 - n + k * dv;
+            while (k-- > 0) {
+                dg_process_ptimer(c);
+            }
+        } else {
+            c->ptimer_counter = c0 - n;
+        }
+    }
+
+    {
+        int32_t c0 = c->stopwatch_counter;
+        int32_t d  = n * STOPWATCH_FX;
+        if (d >= c0) {
+            int32_t k = ((d - c0) / STOPWATCH_DIV_FX) + 1;
+            c->stopwatch_counter = c0 - d + k * STOPWATCH_DIV_FX;
+            while (k-- > 0) {
+                dg_process_stopwatch(c);
+            }
+        } else {
+            c->stopwatch_counter = c0 - d;
+        }
+    }
+
+    {
+        int32_t c0 = c->timer_counter;
+        if (n >= c0) {
+            int32_t k = ((n - c0) / k_timer_div) + 1;
+            c->timer_counter = c0 - n + k * k_timer_div;
+            while (k-- > 0) {
+                dg_process_timer(c);
+            }
+        } else {
+            c->timer_counter = c0 - n;
+        }
     }
 }
 
@@ -2462,7 +2588,11 @@ DG_IRAM int dg_step(void)
         if (!c->HALT) {
             uint16_t op;
             c->if_delay = 0;
-            op = (uint16_t)dg_rom_get_word(c, (uint32_t)c->PC * 2u);
+            /* E0C6200 opcodes are 12 bits.  A missing or half-written ROM makes
+             * dg_rom_get_word() return 0xFFFF or arbitrary junk, and indexing
+             * dg_op_tbl[0xFFFF] would jump 61,439 entries past the table (R2
+             * audit: reproduced as a segfault).  Mask, don't trust. */
+            op = (uint16_t)(dg_rom_get_word(c, (uint32_t)c->PC * 2u) & 0x0FFFu);
             cycles = dg_op_tbl[op](c, op);
             c->instr_counter += 1;
         }
@@ -2486,16 +2616,35 @@ DG_IRAM int dg_step(void)
 
         {
             /* 1/1024-cycle units; exact equivalent of the reference double math */
-            int32_t ec = total;
-            if (!(c->CTRL_OSC & IO_CLKCHG)) {
-                ec *= c->osc1_div;              /* osc1_div = 33125 */
+            const int fast = (c->CTRL_OSC & IO_CLKCHG) != 0;
+            int32_t div = c->osc1_div;
+            int32_t before = c->osc1_counter;
+            int32_t ec = fast ? (total << OSC1_FX_SHIFT) : (total * div);
+            int32_t cnt = before - ec;
+
+            if (cnt > 0) {
+                c->osc1_counter = cnt;
+            } else if (div <= 0) {
+                /* corrupt state (osc1_div == 0): keep the original behaviour,
+                 * which is a hang in this loop -- see findings */
+                c->osc1_counter = cnt;
+                while (c->osc1_counter <= 0) {
+                    c->osc1_counter += div;
+                    dg_clock_osc1(c);
+                }
             } else {
-                ec *= (1 << OSC1_FX_SHIFT);     /* clock change: 1.0 in fx units */
-            }
-            c->osc1_counter -= ec;
-            while (c->osc1_counter <= 0) {
-                c->osc1_counter += c->osc1_div;   /* reference adds osc1_div unconditionally */
-                dg_clock_osc1(c);
+                int32_t n;
+                if (!fast && before > 0 && before <= div) {
+                    /* ec is an exact multiple of div and the counter is inside
+                     * (0, div], so the burst is exactly `total` ticks and the
+                     * residue is `before` again (invariant after the 1st step) */
+                    n = total;
+                    c->osc1_counter = before;
+                } else {
+                    n = (-cnt) / div + 1;
+                    c->osc1_counter = cnt + n * div;
+                }
+                dg_clock_osc1_batch(c, n);
             }
         }
     }
@@ -2705,5 +2854,13 @@ int dg_state_load(const uint8_t *src, uint32_t len)
     memcpy(&g_cpu, &snap, sizeof g_cpu);
     g_cpu.rom = rom;
     g_cpu.rom_size = rom_size;
+    /* Blobs come from NVS but also from the console (SAVEIN writes whatever the
+     * host sends).  A blob with osc1_div == 0 makes the OSC1 settle loop add 0
+     * forever -- an unrecoverable hang on the next dg_step() (R2 audit).  Keep
+     * it inside the range dg_set_osc1_speed() can produce, and the counter
+     * non-negative so the first step behaves normally. */
+    if (g_cpu.osc1_div < OSC1_DIV_FX) g_cpu.osc1_div = OSC1_DIV_FX;
+    if (g_cpu.osc1_div > OSC1_DIV_FX * 16) g_cpu.osc1_div = OSC1_DIV_FX * 16;
+    if (g_cpu.osc1_counter < 0) g_cpu.osc1_counter = 0;
     return 0;
 }

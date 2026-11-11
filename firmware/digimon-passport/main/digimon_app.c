@@ -243,12 +243,12 @@ static uint8_t s_style;
 #define AUDIO_SAMPLES (AUDIO_HZ * FRAME_MS / 1000)     /* 320 @ 20 ms */
 typedef struct { int16_t pcm[AUDIO_SAMPLES]; } audio_block_t;
 static QueueHandle_t s_audio_q;
-static double s_phase;
+static uint32_t s_phase_q32;      /* square-wave phase, 0..2^32 == one cycle */
 
 static uint16_t *s_canvas_buf;
 static uint8_t s_last_pic[DG_LCD_H][DG_LCD_W];   /* shadow, for dirty detection */
 static bool s_pic_valid;
-static lv_obj_t *s_canvas;
+/* s_canvas is defined once, up with the layout block (see the glass geometry) */
 static QueueHandle_t s_key_q;
 
 /* ---- M2 link plumbing --------------------------------------------------- */
@@ -357,7 +357,10 @@ static void save_rom_index(int idx)
 #define SAVE_MAGIC       0x31474744u          /* "DGG1" */
 #define SAVE_INTERVAL_US (60 * 1000 * 1000)    /* 1 min -- todo #7 rolled back: 5 min threw
                                                 * away too much on a power cut (user, 2026-11-09) */
-#define SAVE_BUF_SIZE    (4096)
+/* sizeof(save_hdr_t) + dg_state_size(); 1,400 leaves ~70 B of headroom over the
+ * current 20 + 1,304 B and keeps a 4 KB page of .bss from being reserved for a
+ * 1.3 KB blob. */
+#define SAVE_BUF_SIZE    (1400)
 
 typedef struct {
     uint32_t magic;
@@ -865,11 +868,12 @@ static int render_lcd(void)
     const uint16_t base = tone[0], gap = tone[1];
 
     /* 1. the whole glass, including both icon bands and the blank margins.
-     * Style C copies the full-resolution backdrop straight in: one 70 KB memcpy
-     * is cheaper than the per-cell mosaic it replaced and the scene stays smooth
-     * instead of breaking into 8 px blocks. */
+     * Style C decodes the full-resolution backdrop straight in.  It is stored
+     * as I8 (one index byte per pixel) because the artwork only has 206 distinct
+     * RGB565 values: the palette reproduces it exactly, and this reads half the
+     * flash bytes a 70 KB memcpy would.  (R2 audit §4.2, MSE 0.) */
     if (s_style == STYLE_RETAIL) {
-        memcpy(s_canvas_buf, dg_backdrop, sizeof(dg_backdrop));
+        for (int i = 0; i < DG_BACKDROP_N; i++) s_canvas_buf[i] = dg_backdrop_pal[dg_backdrop[i]];
     } else {
         for (int i = 0; i < s_view_w * s_view_h; i++) s_canvas_buf[i] = base;
     }
@@ -1005,7 +1009,8 @@ static void blit_slot(const lv_image_dsc_t *img, int x, int y, int filled)
                  * black; filled sprites (dark plate + white artwork) are already
                  * legible on any backdrop. */
                 if (sv == DG_GLASS_KEY565) {
-                    dst[c] = dg_backdrop[dy * s_view_w + dx];
+                    int bi = dy * s_view_w + dx;
+                    dst[c] = dg_backdrop_pal[dg_backdrop[bi]];
                     continue;
                 }
                 if (!filled) { dst[c] = DG_ICON_INK565; continue; }
@@ -1208,6 +1213,39 @@ static int hex_nibble(char c)
     if (c >= 'A' && c <= 'F') return c - 'A' + 10;
     if (c >= 'a' && c <= 'f') return c - 'a' + 10;
     return -1;
+}
+
+/* Minimal stand-in for sscanf's numeric conversions.  The scanf family (plus the
+ * strtod it drags in) cost 12 KB of flash for two console commands; strtol is
+ * already linked for other paths.  Returns false when no digits were consumed, so
+ * callers keep the old "at least N fields" contract. */
+static bool parse_num(char **pp, int base, long *out)
+{
+    char *q = *pp;
+    while (*q == ' ') q++;
+    char *end = NULL;
+    long v = strtol(q, &end, base);
+    if (end == q) return false;
+    *pp = end;
+    *out = v;
+    return true;
+}
+
+/* Same, for fields that are unsigned by contract (ROM length, CRC32, hex ids).
+ * strtol() saturates at LONG_MAX on this target (long is 32 bits), so a CRC32
+ * with bit 31 set arrived as 0x7FFFFFFF and dg_rom_store_commit_write() then
+ * rejected a perfectly good upload with ESP_ERR_INVALID_CRC.  Half of all CRCs
+ * are like that -- e.g. DigimonV1ES.bin = 0xBD56E590.  (R2 audit §3.1.) */
+static bool parse_unum(char **pp, int base, unsigned long *out)
+{
+    char *q = *pp;
+    while (*q == ' ') q++;
+    char *end = NULL;
+    unsigned long v = strtoul(q, &end, base);
+    if (end == q) return false;
+    *pp = end;
+    *out = v;
+    return true;
 }
 
 /* Protocol replies go out through here instead of bare con_printf().  On hardware
@@ -1482,7 +1520,25 @@ static void rom_import_cmd(char *args)
     char name[DG_ROM_NAME_LEN];
     memset(name, 0, sizeof name);
 
-    int nf = sscanf(args, "%d %lu %lx %11s", &idx, &len, &crc, name);
+    /* Hand-rolled instead of sscanf("%d %lu %lx %11s"): the scanf family and the
+     * strtod it drags in cost 12 KB of flash for these two commands.
+     * len and crc MUST go through the unsigned parser -- see parse_unum(). */
+    char *p = args;
+    long v = 0;
+    int nf = 0;
+    if (parse_num(&p, 10, &v)) { idx = (int)v; nf++; }
+    if (parse_unum(&p, 10, &len)) { nf++; }
+    if (parse_unum(&p, 16, &crc)) { nf++; }
+    while (*p == ' ') p++;
+    if (*p) {
+        size_t k = 0;
+        while (p[k] && p[k] != ' ' && p[k] != '\r' && p[k] != '\n' && k < sizeof name - 1) {
+            name[k] = p[k];
+            k++;
+        }
+        name[k] = 0;
+        nf++;
+    }
     if (nf < 2 || idx < 0 || idx >= DG_ROM_SLOTS || len == 0 || len > DG_ROM_MAX_LEN) {
         con_printf("ROMBAD args\n");
         fflush(stdout);
@@ -1642,6 +1698,19 @@ static void console_poll(void)
                 /* same jump as the SKIP TIME menu row; handy for scripted checks
                  * now that a skip really executes the game time */
                 rom_skip_minutes(atoi(line + 5), NULL);
+            } else if (strncmp(line, "SAVEDEL ", 8) == 0) {
+                /* Must sit BEFORE the "SAVE" branch below: "SAVE" is a prefix of
+                 * "SAVEDEL", so the old order ran save_slot() instead of deleting
+                 * (the PC tool's "reset save" button did exactly that -- it saved,
+                 * then waited forever for "SAVEDEL ok").  R2 audit §3.2. */
+                int idx = atoi(line + 8);
+                if (idx < 0 || idx >= DG_ROM_SLOTS) {
+                    con_printf("SAVEDELBAD\n");
+                } else {
+                    reset_save(idx);
+                    con_printf("SAVEDEL ok %d\n", idx);
+                }
+                fflush(stdout);
             } else if (strncmp(line, "SAVE", 4) == 0) {
                 /* Persist right now.  Closing the USB-Serial-JTAG port resets the
                  * unit (DTR/RTS), which used to eat the battle result: `bouts`
@@ -1744,14 +1813,35 @@ static void console_poll(void)
                 int n = -1, slot = -1, effort = -1, ver = -1;
                 char name[DG_CARD_NAME_LEN + 1];
                 name[0] = 0;
-                int got = sscanf(line + 6, "%d %x %d %d %10s", &n, &slot, &effort, &ver, name);
+                /* Hand-rolled sscanf("%d %x %d %d %10s") -- see parse_num().
+                 * Count the four *numeric* fields separately: the old code let
+                 * the trailing name satisfy "at least 3 fields", so
+                 * "CARDW 0 A x 1 Name" was accepted with slot=0xA, effort=1
+                 * and the "x" swallowed as the name.  (R2 audit P2.) */
+                char *p = line + 6;
+                long v = 0;
+                int nf = 0;
+                if (parse_num(&p, 10, &v)) { n = (int)v;      nf++; }
+                if (parse_num(&p, 16, &v)) { slot = (int)v;   nf++; }
+                if (parse_num(&p, 10, &v)) { effort = (int)v; nf++; }
+                if (parse_num(&p, 10, &v)) { ver = (int)v;    nf++; }
+                while (*p == ' ') p++;
+                if (*p) {
+                    size_t k = 0;
+                    while (p[k] && p[k] != ' ' && p[k] != '\r' && p[k] != '\n'
+                           && k < sizeof name - 1) {
+                        name[k] = p[k];
+                        k++;
+                    }
+                    name[k] = 0;
+                }
                 dg_card_t c;
                 memset(&c, 0, sizeof c);
                 c.slot = (uint8_t)(slot < 0 ? 3 : slot);
                 c.effort = (uint8_t)(effort < 0 ? 0 : effort);
                 c.version = (uint8_t)(ver < 0 ? 0 : ver);
                 snprintf(c.name, sizeof c.name, "%s", name);
-                if (got < 3 || !dg_card_save(n, &c))
+                if (nf < 4 || !dg_card_save(n, &c))
                     con_printf("CARDWBAD\n");
                 else
                     con_printf("CARDW %d slot=%X effort=%u ver=%u name=%s\n",
@@ -1880,15 +1970,6 @@ static void console_poll(void)
                 for (int i = 0; i < DG_ROM_SLOTS; i++)
                     con_printf(" %d=%lu", i, (unsigned long)age_peek(i));
                 con_printf("\n");
-                fflush(stdout);
-            } else if (strncmp(line, "SAVEDEL ", 8) == 0) {
-                int idx = atoi(line + 8);
-                if (idx < 0 || idx >= DG_ROM_SLOTS) {
-                    con_printf("SAVEDELBAD\n");
-                } else {
-                    reset_save(idx);
-                    con_printf("SAVEDEL ok %d\n", idx);
-                }
                 fflush(stdout);
             } else if (strncmp(line, "DUMP", 4) == 0) {
                 /* evolution inputs, straight out of page 0 (see appendix-ram).
@@ -2849,12 +2930,16 @@ static void apply_shell(void)
                              ? 0x2A2A26 : 0xEDEDE6) : sh->hud;
 
     lv_obj_set_style_bg_color(s_scr, lv_color_hex(sh->body), 0);
-    /* Brick texture: a 32x16 transparent mortar tile tiled behind everything, so
+    /* Brick texture: a 128x128 transparent mortar mask tiled behind everything, so
      * every colourway gets the stone-course look without shipping one image per
-     * colour.  Style A clears it. */
+     * colour.  Style A clears it.  The tile is A8 (alpha only) and the grey comes
+     * from the recolor below -- ARGB8888 cost 64 KB of flash for two colours,
+     * A8 costs 16 KB and is pixel-identical at the same alpha. */
     if (s_scr) {
         lv_obj_set_style_bg_image_src(s_scr, retail ? (const void *)&dg_brick : NULL, 0);
         lv_obj_set_style_bg_image_tiled(s_scr, retail ? true : false, 0);
+        lv_obj_set_style_bg_image_recolor(s_scr, lv_color_hex(DG_BRICK_INK), 0);
+        lv_obj_set_style_bg_image_recolor_opa(s_scr, LV_OPA_COVER, 0);
     }
     if (s_rim) {
         lv_obj_set_style_bg_color(s_rim, lv_color_hex(rim), 0);
@@ -3114,6 +3199,11 @@ static void audio_task(void *arg)
     }
 }
 
+/* Fixed-point square wave.  The old version advanced a double per sample, which
+ * is 3-4 soft-float library calls per sample -- 320 samples every 20 ms frame,
+ * i.e. 0.5-0.8 ms of the 20 ms budget, plus 6.7 KB of __adddf3 & friends in the
+ * image.  Integer phase wrapping at 2^32 is exactly the old (phase >= 1.0) -= 1.0
+ * and the 50 % duty is the old (phase < 0.5). */
 static void fill_audio(audio_block_t *b)
 {
     const double f = dg_sound_freq();
@@ -3123,12 +3213,11 @@ static void fill_audio(audio_block_t *b)
         return;
     }
     if (amp > 1.0) amp = 1.0;
-    const double step = f / (double)AUDIO_HZ;
+    const uint32_t step = (uint32_t)(f * 4294967296.0 / (double)AUDIO_HZ);
     const int16_t level = (int16_t)(9000.0 * amp);
     for (int i = 0; i < AUDIO_SAMPLES; i++) {
-        s_phase += step;
-        if (s_phase >= 1.0) s_phase -= 1.0;
-        b->pcm[i] = (s_phase < 0.5) ? level : (int16_t)(-level);
+        s_phase_q32 += step;
+        b->pcm[i] = (s_phase_q32 < 0x80000000u) ? level : (int16_t)(-level);
     }
 }
 

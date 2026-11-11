@@ -14,6 +14,10 @@ static const char *TAG = "app";
 
 esp_err_t digimon_app_start(void);
 
+#ifdef DG_VPET_NATIVE
+esp_err_t vpet_native_start(void);
+#endif
+
 /* The post-battle reset left no panic/WDT text on the USB console, so the only
  * durable evidence is the reason the ROM/bootloader recorded in RTC memory.
  * Print it as the very first line of every boot. */
@@ -57,7 +61,11 @@ void app_main(void)
     if (bsp_battery_init() != ESP_OK) ESP_LOGW(TAG, "battery init failed");
 
     ESP_LOGI(TAG, "step 5: app start");
+#ifdef DG_VPET_NATIVE
+    esp_err_t err = vpet_native_start();
+#else
     esp_err_t err = digimon_app_start();
+#endif
     if (err != ESP_OK) ESP_LOGE(TAG, "emulator start: %s", esp_err_to_name(err));
 }
 
