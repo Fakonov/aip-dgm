@@ -1,4 +1,4 @@
-﻿// Waking a dark screen must only wake it.
+// Waking a dark screen must only wake it.
 //
 // Bug being tested: a short OK tap on the auto-off screen woke the panel AND
 // opened SETTINGS, because only the press was swallowed and the release used a
@@ -102,26 +102,33 @@ for (const [k, h] of [['DOWN', 0.5], ['UP', 0.5], ['DOWN', 0.5], ['OK', 0.5], ['
   await press(k, h);
 }
 
-/* turn AUTO OFF to 15S: A x4 to the AUTO OFF row, B twice */
-await press('OK', 3.4, 0.6);                 // open menu
-for (let i = 0; i < 4; i++) await press('UP', 0.3, 0.3);   // ROM -> SHELL -> BRIGHT -> VOLUME -> AUTO OFF
-await shot('w0_auto_row');
-await press('DOWN', 0.3, 0.3);               // NEVER -> 15S
-await shot('w1_auto_15s');
-await press('OK', 0.3, 0.6);                 // close
-await shot('w2_game');
+/* turn AUTO OFF to 15S.  The five-row menu landed in round 107: AUTO OFF moved
+ * into the POWER group, so the old "A x4 then B" path now just opens that group
+ * and leaves the arm on BRIGHT -- which is why this scenario silently stopped
+ * asserting anything.  New path: A x4 -> POWER, B opens it, A x2 -> AUTO OFF. */
+await press('OK', 3.4, 0.6);                 // open menu, cursor on TIME
+for (let i = 0; i < 4; i++) await press('UP', 0.3, 0.3);   // TIME -> ROM -> BATTLE -> APPEAR -> POWER
+await shot('w0_power_row');
+await press('DOWN', 0.3, 0.5);               // B: open POWER (BRIGHT / VOLUME / AUTO OFF)
+for (let i = 0; i < 2; i++) await press('UP', 0.3, 0.3);   // BRIGHT -> VOLUME -> AUTO OFF
+await shot('w1_auto_row');
+await press('DOWN', 0.3, 0.5);               // B: NEVER -> 15S
+await shot('w2_auto_15s');
+await press('OK', 0.3, 0.5);                 // C: back to the first level
+await press('OK', 0.3, 0.6);                 // C: close the menu
+await shot('w3_game');
 
-/* wait past the idle timeout: backlight should go off */
+/* wait past the idle timeout: backlight should go off and the CPU drop to 80 */
 runUntil(emulator.cycles() / 160e6 + 18);
-await shot('w3_screen_off');
+await shot('w4_screen_off');
 
 /* short OK tap: must only wake, not open settings */
 await press('OK', 0.25, 1.0);
-await shot('w4_after_wake_tap');
+await shot('w5_after_wake_tap');
 
 /* and a long OK hold still opens the menu */
 await press('OK', 3.4, 0.6);
-await shot('w5_long_hold_opens');
+await shot('w6_long_hold_opens');
 
 console.log('\nlog:');
-console.log(log.filter((l) => /menu|screen/.test(l)).join('\n'));
+console.log(log.filter((l) => /menu|screen|PWR|audio/.test(l)).join('\n'));

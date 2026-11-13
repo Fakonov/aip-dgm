@@ -83,7 +83,7 @@
 > "Enhanced 20th" 原型、`pet_*.h`）一起带进公开树 —— 重铺后先 `git status` 确认提交范围。
 > ⚠️ **手工复制文档进公开树必须脱敏**：`Copy-Item` 会绕过 `build_public_tree.py` 的 DESENSITIZE。
 > 曾因此把 16 处 `<home>` 推上 `main`（`7446312`/`3790644`，历史里仍保留），
-> 复制后 `grep <user>` 必须为 0 再 commit；`git add -A` 也会把根目录杂物一起带上。
+> 复制后 `grep DuWeisi` 必须为 0 再 commit；`git add -A` 也会把根目录杂物一起带上。
 > 已知：`DigimonV1ES`（`0xBD56E590`）仍无规则表，会显示「暂无规则表（显示 V1）」。
 > **round 94/95/96 改动**（2026-11-08，已刷 COM5）：SKIP 加 12H/24H、背光默认 70 %、存档 60 s→5 min（**round 104 已按用户要求改回 60 s**）、
 > 石墙 tile 192→128（密度按实机反馈三次调，定稿 `ROWS=3` / 每行一条缝 / 线宽 5 px；
@@ -135,7 +135,7 @@
 > con_printf 缓冲区）和 PC 工具（存档直连、右侧日志栏、一堆修复）。
 > **要最新交付物看 `test\20261104-2035\`，别从 v4 里拿**
 > 上一轮会话日志（只用于考古，别当记忆用）：
-> `~/.dsh/sessions/--C-Users-<user>-Documents-deepseek-harness-default-workspace--/session-764e0072-8790-4479-8214-2cee1d639bbd/session.v4.jsonl.zstd`
+> 上一轮会话日志（内部文件，不随公开仓库分发）
 > （zstd 分帧，逐帧 `zstdDecompressSync` 后拼起来就是完整 JSONL，2021 帧 / 7.3 MB / 约 4.0 M 字符）
 
 ---
@@ -403,6 +403,88 @@ ESP-NOW 旧实现，`M4B BUTTONS-ONLY: PASS` 过了多次。
 > - 控制台仍可用 `KEY 5 <ms>` 直接试（ms ≥ 3200）
 > - 调试坑：串口注入按键前先 `KEY 4 400` 唤醒（60 s 自动熄屏时按键只做唤醒）；
 >   被弄进时钟设置页时，**`C`×2 再按 `B`** 才回主屏
+
+---
+
+## 息屏省电：CPU 80 MHz + 停渲染 + 挂 codec（round 119，2026-11-13 真机通过）
+
+> **当前版本：`2.1.2`（未发布）** —— `version.txt` 已升到 2.1.2，
+> **没有打 tag、没有推 GitHub、没有提社区**，等下面「待办」清完再走
+> [RELEASE-RULES.md](RELEASE-RULES.md) 的发布流程。
+> 线上（社区 revision 5383 / GitHub Release）仍是 **2.1.0**。
+>
+> **当前真机基线（用户 2026-11-13 确认「就这样」）**：
+> `0xB7B10` = **752,400 B**，SHA256 `79A6277D…`，
+> 归档 `docs/backup/digimon-app-2.1.2-2026-11-13.bin`（`.gitignore` 忽略，与 `flash-*.bin` 一样**别删**）。
+> 版本内容：round 119 息屏省电 + round 120 四项体验功能（设置里显示版本号、主屏左下角 `h:mm` 游玩时间、
+> 卡片对战次数与三步确认清零、长按 OK 1.5 s）+ 三处提示改深红 `#B3261E`
+> + **round 121 RETAIL 点阵补网格线、点色统一加深 6 %、i2s 两条噪音日志清理**。详见 `PROGRESS.md` round 120 / 121。
+> 前两版留档：2.1.1 定稿 `digimon-app-2.1.1-2026-11-13.bin`（752,240 B / `980753FB…`）、
+> 2.1.0 实跑版 `digimon-app-power-2026-11-13.bin`（749,008 B / `DE46F758…`）。
+> 历史教训：**别拿哈希判断代码是否等价**，IDF 会把编译时间写进 `esp_app_desc_t`。
+> ⚠ 这些改动提交在 **`feature/cardputer-adv`** 分支，`master` 还停在 `e966ee2`，没合也没改名 —— 见本节末尾「分支状态」。
+
+### 发布前待办
+
+| # | 事项 | 状态 |
+|---|---|---|
+| 1 | i2s 两条 `channel has not been enabled yet` 噪音：BSP 加 `s_i2s_on` 状态位（四处维护），熄屏实测已静音 | **已完成（round 121）**；唤醒路径加了同样 guard，发版前按键复验一次 |
+| 2 | 发布流程本身：`version.txt` 已是 2.1.2；还要同步上游模板的 `CHANGELOG.md` / `CHANGELOG.zh_CN.md`、打 `v2.1.2` tag、按 RELEASE-RULES 走 GitHub 与社区 | 待做 |
+| 3 | 可选、非阻塞：默认背光 70% → 60%（零风险，估算再省 2–4 mA，比继续压 CPU 划算） | 可选 |
+
+**分支状态**：`feature/cardputer-adv` 是 2026-11-07 为 Cardputer 移植切出去后一直没回来的分支，
+它唯一的历史提交是「v2.1.0 发布后的完整工作树」快照，所以它实际就是当前主线。收口时执行
+`git branch -f master feature/cardputer-adv` → `git checkout master` → `git branch -d feature/cardputer-adv`。
+
+> 熄屏不再只是关背光。`screen_set(true)` 现在做三件事，唤醒时逐项恢复。
+> 实测日志与评估细节见 `PROGRESS.md` 的 round 119。
+
+| 项 | 熄屏 | 唤醒 |
+|---|---|---|
+| CPU | `dg_cpu_set(80)` → readback `80000000 Hz` | `dg_cpu_set(160)` → `160000000 Hz` |
+| 渲染 | 整块 LVGL 跳过（`render_lcd` / `render_icons` / 电量都不跑） | `s_pic_valid=false` + `s_icon_stale=true` 强制全量重绘 |
+| 音频 | `s_audio_want=false` → `audio_task` 里 `bsp_audio_sleep()`（ES8311 suspend + I2S disable） | `s_audio_want=true` → `bsp_audio_wake()` 重开 codec |
+
+**为什么 80 MHz 是安全档**：C3 上 160/80 都是 PLL 源，`rtc_clk_cpu_freq_to_pll_mhz()` 固定把 APB
+记成 80 MHz，所以 80 MHz LCD SPI（源 APB）、I2S（源 PLL_F160M）、USB-Serial-JTAG 都不动；
+**没有走 XTAL 源**（那条才会影响 USB）。游戏时间来自 `dg_osc1_ticks()`，与频率无关。
+
+**真机核对点（复测照这个看）**：`auto screen off after Ns` → `cpu -> 80 MHz (readback …)` →
+`audio suspend: ESP_OK`；息屏期间 `alive frame` 必须仍是每 5 s +250（50 fps），`instr` 斜率与亮屏一致。
+掉帧或斜率变了就是 80 MHz 撑不住，回退。
+
+**已知遗留**：suspend 时刷两条 `i2s_channel_disable: the channel has not been enabled yet`
+（`esp_codec_dev` 已关过一次，`audio_disable_i2s_channels()` 又关一次）。无害，要清就在 BSP 里先查状态。
+
+**没做**：40 MHz（I2S 持 `ESP_PM_APB_FREQ_MAX`，且 ES8311 停 MCLK 会复位，只值约 3 mA）；
+light sleep（按键是单 ADC 分压脚，ISR 不在 IRAM，且插着 USB 时 `usb_serial_jtag` 持
+`ESP_PM_NO_LIGHT_SLEEP`，插电脑测不出来）。
+
+**拔线长测（2026-11-13 已做，6 h 40 m）**
+
+- 时间守恒：`age` 105,942 → 129,938 = 23,996 s，墙钟 23,940 s，**差 56 s（0.23%）**。
+- 电量 93% → 68%（掉 25%）→ 平均 **约 18.8 mA**，推算息屏常待机 **≈26 h**（改前按 25 mA 估 ≈20 h）。
+- 口径：93% 是充电中读数；「改前 25 mA」是账本推算，要硬对照得刷回旧固件跑同样 6.6 h。
+
+拔线前先 `SAVE` 再拔线；过程中没有日志，回来只能靠存档时间 + 屏幕电量百分比取证。
+注意**命令行关串口那套 DTR/RTS 电平会复位**（见坑 4 上面那张表），物理拔线则不断电。
+
+**模拟器回归（round 119 已跑通）**：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File build_sim.ps1
+python tools\mk_full_bin.py --build firmware\digimon-passport\build-sim `
+    --rom "0=firmware/digimon-passport/main/roms/digimon.bin:V1" --out docs\ui-sim\full-sim-power.bin
+node tools\dg_sim_wake.mjs docs\ui-sim\full-sim-power.bin docs\ui-sim-power
+```
+
+判定标准三条：
+
+1. 输出里必须有 `PWR screen=off cpu=80` 与 `PWR screen=on cpu=160`（仿真分支只打点，不真切频）。
+2. `w5_after_wake_tap.png` 与 `w3_game.png` **逐字节相同** = 唤醒后全量重绘把原画面恢复回来了。
+3. `w4_screen_off.png` 与 `w3_game.png` 不同、之后不再变化 = 熄屏前最后一次渲染之后画布冻住（渲染真被跳过）。
+
+> 仿真的 `PWR` 行必须是 `esp_rom_printf`：`ESP_LOGI` 走 USB-Serial-JTAG，wasm 里看不到（坑 9）。
 
 ---
 
@@ -683,7 +765,12 @@ python tools\mk_full_bin.py --build firmware\digimon-passport\build-sim --out do
 ```
 
 `tools/dg_sim_test.mjs` / `dg_sim_menu2.mjs` / `dg_sim_wake.mjs` / `dg_sim_state.mjs` / `dg_sim_card.mjs`
-是更早的行为回归（断言式，不是截图），仍然可用，用 `mk_full_bin.py --rom` 生成带 ROM 的镜像再跑。
+是更早的行为回归（断言式，不是截图），用 `mk_full_bin.py --rom` 生成带 ROM 的镜像再跑。
+⚠ **round 119 才发现 `dg_sim_wake.mjs` 早就悄悄失效了**：菜单从 9 行改成 5 行后，AUTO OFF 挪进
+POWER 二级面板，而脚本还按「A ×4 直接到 AUTO OFF」走，结果只把二级面板打开、光标停在 BRIGHT，
+`AUTO OFF` 一直是 NEVER，后面 18 s 根本不会熄屏——它跑了几个月，一个字都没断言过。
+现在已改成 `A ×4 → POWER → B 进面板 → A ×2 → AUTO OFF → B 改值`，并加了 `PWR` 打点（见上面「息屏省电」一节）。
+**以后再动菜单行序，先回来看这个脚本。**
 
 ## 验证门禁与仓库外依赖
 

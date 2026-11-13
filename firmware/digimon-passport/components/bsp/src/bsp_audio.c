@@ -27,6 +27,11 @@ static uint8_t  s_bits, s_ch;
 static bool     s_opened;
 static bool     s_sleeping;
 static bool     s_initialized;
+/* Do WE believe the two I2S channels are enabled?  The driver logs an error
+ * ("the channel has not been enabled yet") every time disable() is called on a
+ * channel that is already stopped, and esp_codec_dev already stops them in
+ * close().  Tracking it here is what keeps the suspend/wake path quiet. */
+static bool     s_i2s_on;
 static esp_err_t s_sleep_result;
 static bool     s_codec_release_failed;
 static uint8_t  s_volume;
@@ -144,6 +149,10 @@ static const es8311_reg_value_t s_es8311_sleep_sequence[] = {
 };
 
 static esp_err_t audio_disable_i2s_channels(void) {
+    /* Already stopped (esp_codec_dev's close() does it): calling disable again
+     * makes the driver log a misleading error line. */
+    if (!s_i2s_on) return ESP_OK;
+
     esp_err_t first_error = ESP_OK;
     const struct {
         i2s_chan_handle_t channel;
@@ -163,6 +172,7 @@ static esp_err_t audio_disable_i2s_channels(void) {
             if (first_error == ESP_OK) first_error = e;
         }
     }
+    s_i2s_on = false;
     return first_error;
 }
 
@@ -237,6 +247,8 @@ static esp_err_t audio_prepare_i2s_reopen(void) {
     if (e != ESP_OK) {
         ESP_LOGE(TAG, "I2S RX 恢复失败: %s", esp_err_to_name(e));
         i2s_channel_disable(s_tx);
+    } else {
+        s_i2s_on = true;              /* both channels are running again */
     }
     return e;
 }
@@ -260,6 +272,9 @@ static void audio_delete_codec(void) {
         }
         s_codec = NULL;
     }
+    /* esp_codec_dev_delete() above runs the codec's close(), which stops the I2S
+     * channels -- only trust that when a codec was actually opened. */
+    if (s_opened) s_i2s_on = false;
     s_opened = false;
 }
 
@@ -274,17 +289,18 @@ static void audio_cleanup(void) {
         s_data = NULL;
     }
     if (s_rx) {
-        i2s_channel_disable(s_rx);
+        if (s_i2s_on) i2s_channel_disable(s_rx);
         esp_err_t e = i2s_del_channel(s_rx);
         if (e == ESP_OK) s_rx = NULL;
         else ESP_LOGE(TAG, "I2S RX 回滚失败: %s", esp_err_to_name(e));
     }
     if (s_tx) {
-        i2s_channel_disable(s_tx);
+        if (s_i2s_on) i2s_channel_disable(s_tx);
         esp_err_t e = i2s_del_channel(s_tx);
         if (e == ESP_OK) s_tx = NULL;
         else ESP_LOGE(TAG, "I2S TX 回滚失败: %s", esp_err_to_name(e));
     }
+    s_i2s_on = false;
     if (s_ctrl) {
         audio_codec_delete_ctrl_if(s_ctrl);
         s_ctrl = NULL;
@@ -350,6 +366,7 @@ static esp_err_t i2s_full_duplex_init(void) {
     e = i2s_channel_enable(s_tx);
     if (e == ESP_OK) e = i2s_channel_enable(s_rx);
     if (e != ESP_OK) ESP_LOGE(TAG, "i2s channel enable 失败: %s", esp_err_to_name(e));
+    else s_i2s_on = true;
     return e;
 }
 

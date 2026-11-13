@@ -19,6 +19,9 @@
 #include "esp_log.h"
 #include "esp_heap_caps.h"
 #include "esp_system.h"
+#include "esp_app_desc.h"
+#include "esp_clk_tree.h"
+#include "soc/rtc.h"
 #include "nvs.h"
 #include "nvs_flash.h"
 #include "lvgl.h"
@@ -279,7 +282,11 @@ static int64_t s_key_release_at;
  * still down* - no need to let go first.  s_ok_held_consumed then swallows the
  * release, otherwise that release would land in the menu, where a short C press
  * means "close", and the panel would flash open and shut. */
-#define MENU_HOLD_US 3000000
+/* 1.5 s since 2.1.1 (was 3.0 s, then 1.8 s).  The owner reported the old hold
+ * felt long on a device you only touch to change a setting; 1.5 s is short
+ * enough to feel responsive and still 10x the ~120 ms the ROM needs to see a
+ * key, so a game press can never be mistaken for it. */
+#define MENU_HOLD_US 1500000
 static bool s_ok_down;
 static bool s_ok_armed;           /* a real OK press is being timed */
 static bool s_ok_held_consumed;   /* the hold already opened the menu */
@@ -840,6 +847,18 @@ static inline uint16_t darken565(uint16_t c)
     return (uint16_t)((r << 11) | (g << 5) | b);
 }
 
+/* One RGB565 colour a little darker (integer only).  Two users: the 6 % mesh
+ * that runs through every cell, and the dot ink itself -- on the photo backdrop
+ * the dots read lighter than they do on the flat CLASSIC glass, so both themes
+ * now share an ink that is one step deeper than the tone table. */
+static inline uint16_t dim565(uint16_t v, uint16_t num, uint16_t den)
+{
+    uint16_t r5 = (uint16_t)(((v >> 11) & 0x1F) * num / den);
+    uint16_t g6 = (uint16_t)(((v >> 5) & 0x3F) * num / den);
+    uint16_t b5 = (uint16_t)((v & 0x1F) * num / den);
+    return (uint16_t)((r5 << 11) | (g6 << 5) | b5);
+}
+
 static int render_lcd(void)
 {
     const uint8_t *v = dg_vram();
@@ -866,6 +885,8 @@ static int render_lcd(void)
 
     const uint16_t *tone = GLASS_TONE[DG_LCD_TONE];
     const uint16_t base = tone[0], gap = tone[1];
+    /* ~6 % deeper than the table's lit tone: "slightly darker dots" */
+    const uint16_t lit = dim565(tone[2], 15, 16);
 
     /* 1. the whole glass, including both icon bands and the blank margins.
      * Style C decodes the full-resolution backdrop straight in.  It is stored
@@ -892,11 +913,7 @@ static int render_lcd(void)
         uint16_t *top = &s_canvas_buf[(DG_MAT_Y - 1) * s_view_w];
         for (int x = 0; x < s_view_w; x++) {
             if (s_style == STYLE_RETAIL) {
-                uint16_t v = top[x];
-                uint16_t r5 = (uint16_t)(((v >> 11) & 0x1F) * 15 / 16);
-                uint16_t g6 = (uint16_t)(((v >> 5) & 0x3F) * 15 / 16);
-                uint16_t b5 = (uint16_t)((v & 0x1F) * 15 / 16);
-                top[x] = (uint16_t)((r5 << 11) | (g6 << 5) | b5);
+                top[x] = dim565(top[x], 15, 16);
             } else {
                 top[x] = gap;
             }
@@ -915,26 +932,28 @@ static int render_lcd(void)
                 /* Backdrop is already in place: draw the dot (if lit) and a light
                  * mesh on the empty cells only, so a dot never gets sliced by the
                  * grid line. */
-                uint16_t on = tone[2];
+                uint16_t on = lit;
                 for (int dy = 0; dy < p; dy++) {
                     uint16_t *dst = &row[dy * s_view_w + c * p];
                     int edge_y = (dy == p - 1);
                     for (int dx = 0; dx < p; dx++) {
                         if (cur[r][c]) {
-                            dst[dx] = on;
+                            /* The mesh runs through a lit cell too.  Filling the
+                             * whole cell made a run of dots merge into one solid
+                             * bar -- no gap visible between neighbours, which is
+                             * what the owner reported.  CLASSIC has always drawn
+                             * the gap line inside lit cells, so draw it here too
+                             * and the two themes finally look the same. */
+                            dst[dx] = (edge_y || dx == p - 1) ? gap : on;
                         } else if (edge_y || dx == p - 1) {
                             /* Mesh = the backdrop itself, 6 % darker.  A fixed grey
                              * line turns into white graph paper over the sand. */
-                            uint16_t v = dst[dx];
-                            uint16_t r5 = (uint16_t)(((v >> 11) & 0x1F) * 15 / 16);
-                            uint16_t g6 = (uint16_t)(((v >> 5) & 0x3F) * 15 / 16);
-                            uint16_t b5 = (uint16_t)((v & 0x1F) * 15 / 16);
-                            dst[dx] = (uint16_t)((r5 << 11) | (g6 << 5) | b5);
+                            dst[dx] = dim565(dst[dx], 15, 16);
                         }
                     }
                 }
             } else {
-                uint16_t color = cur[r][c] ? tone[2] : base;
+                uint16_t color = cur[r][c] ? lit : base;
                 for (int dy = 0; dy < p; dy++) {
                     uint16_t *dst = &row[dy * s_view_w + c * p];
                     int edge_y = (dy == p - 1);
@@ -1129,6 +1148,28 @@ static lv_obj_t *s_card_lbl[CARD_MENU_ROWS];
 static int s_card_widgets;          /* rows that actually fit the LVGL pool */
 static bool s_card_menu_open;
 static int s_card_sel;
+/* Which card is fighting right now, -1 when none: the bout counter on the ROM's
+ * side is global, so this is what attributes a finished battle to a card. */
+static int s_card_active = -1;
+/* One battle, one tally.  The ROM's own 0x099 counter cannot be used as the
+ * trigger: it saturates at 0xF (see src/card_test.c's `bouts_before == 0xF`
+ * special case), and a unit that has fought 15 times would never move it again.
+ * So the tally is written when a fight that really happened finishes: two wire
+ * answers exchanged and the ROM back out of the battle screen. */
+static bool s_card_counted;
+/* Hold-to-clear in the picker: 2 s brings up a confirmation, then B three times
+ * wipes the tally.  The confirmation exists because the picker's B starts a
+ * battle -- a mis-timed press should not silently destroy a record. */
+#define CARD_CLEAR_HOLD_US 2000000
+#define CARD_CLEAR_CONFIRMS 3
+#define CARD_CLEAR_TIMEOUT_US (10 * 1000 * 1000)
+static bool s_card_b_down;
+static int64_t s_card_b_press_us;
+static lv_obj_t *s_card_hint;
+/* 0 = idle, 1 = confirm wiping the highlighted card, 2 = confirm wiping all */
+static int s_card_clear_mode;
+static int s_card_clear_left;
+static int64_t s_card_clear_until;
 
 /* Auto-walk into a card battle.  The ROM owns the keypad, so the only way to
  * start a fight without hands is to tap A/B for it and steer by STATE (the
@@ -1143,7 +1184,10 @@ static int64_t s_walk_next_us;
 static uint8_t s_bright = 70;       /* 20..100 %; 70 % is the power-saving default (todo #6) */
 static uint8_t s_vol = 60;          /* 0..100 % */
 static uint16_t s_auto_sec;         /* screen-off timeout, 0 = never */
-static bool s_screen_off;
+static volatile bool s_screen_off;
+static volatile bool s_audio_want = true;   /* false while the screen is dark */
+static volatile bool s_audio_asleep;        /* codec suspended by audio_task */
+static bool s_force_batt;                   /* refresh the gauge right after wake */
 static int64_t s_last_key_us;
 
 static const uint8_t BRIGHT_STEPS[] = { 20, 30, 40, 50, 60, 70, 80, 90, 100 };
@@ -1151,6 +1195,11 @@ static const uint8_t VOL_STEPS[]    = { 0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 1
 static const uint16_t AUTO_STEPS[]  = { 0, 15, 30, 60, 120, 300 };
 
 #define MENU_YELLOW 0xFFD928
+/* Every warning / confirmation prompt on the menu panels: SURE?/REALLY? for a
+ * ROM-save wipe, RESET? for PLAY TIME, and the card-picker clear hint.  Deep red
+ * so it reads as "careful" against the near-white panel without shouting. */
+#define HINT_RED     0xB3261E
+#define MENU_INK     0x17202A
 
 static uint8_t next_u8(const uint8_t *steps, int n, uint8_t cur)
 {
@@ -1192,13 +1241,72 @@ static void load_ui_settings(void)
     nvs_close(h);
 }
 
+/* ---- power: a dark screen drops the CPU to 80 MHz ------------------------
+ * Both 160 and 80 MHz are PLL-sourced on the ESP32-C3, and rtc_clk keeps APB
+ * at 80 MHz for both (rtc_clk_cpu_freq_to_pll_mhz() calls
+ * rtc_clk_apb_freq_update(80 MHz)).  So the 80 MHz LCD SPI (APB-sourced), the
+ * ES8311 I2S clock (PLL_F160M) and the USB-Serial-JTAG peripheral are all
+ * untouched -- only the CPU core slows down.  Nothing here touches the XTAL
+ * CPU source, which is the path that would disturb USB-Serial-JTAG.
+ *
+ * Digimon time comes from dg_osc1_ticks(), never from the CPU clock, so the
+ * pet keeps ageing at exactly the same rate while the backlight is off.
+ *
+ * The wasm simulator has no clock model and hard-wires its virtual clock to
+ * 160 MHz (FoloToy-Passport-Simulator public/wasm/realtime-clock.js), so there
+ * this is a trace line only -- otherwise every existing dg_sim_* script would
+ * measure a different wall clock. */
+#if !defined(DG_SIM_UART0_INPUT)
+static portMUX_TYPE s_pwr_mux = portMUX_INITIALIZER_UNLOCKED;
+#endif
+
+static void dg_cpu_set(int mhz)
+{
+#ifdef DG_SIM_UART0_INPUT
+    esp_rom_printf("PWR cpu=%d\n", mhz);
+#else
+    rtc_cpu_freq_config_t cfg;
+    if (!rtc_clk_cpu_freq_mhz_to_config((uint32_t)mhz, &cfg)) {
+        ESP_LOGW(TAG, "cpu %d MHz is not a supported step", mhz);
+        return;
+    }
+    portENTER_CRITICAL(&s_pwr_mux);
+    rtc_clk_cpu_freq_set_config(&cfg);
+    portEXIT_CRITICAL(&s_pwr_mux);
+
+    uint32_t hz = 0;
+    (void)esp_clk_tree_src_get_freq_hz(SOC_MOD_CLK_CPU,
+                                       ESP_CLK_TREE_SRC_FREQ_PRECISION_CACHED, &hz);
+    ESP_LOGI(TAG, "cpu -> %d MHz (readback %u Hz)", mhz, (unsigned)hz);
+#endif
+}
+
 static void screen_set(bool off)
 {
     s_screen_off = off;
     bsp_display_backlight(off ? 0 : s_bright);
     s_last_key_us = esp_timer_get_time();
-    if (off) s_wake_mask = 0;
-    ESP_LOGI(TAG, "screen %s", off ? "off" : "on");
+    if (off) {
+        s_wake_mask = 0;
+        s_audio_want = false;      /* audio_task suspends the codec */
+        dg_cpu_set(80);
+    } else {
+        s_audio_want = true;       /* audio_task reopens the codec */
+        dg_cpu_set(160);
+        /* Nothing was painted while the panel was dark: force a full repaint
+         * on the next frame, icon bands included. */
+        s_pic_valid = false;
+        s_icon_state = 0xFF;
+        s_icon_stale = true;
+        s_force_batt = true;
+    }
+    ESP_LOGI(TAG, "screen %s (cpu %d MHz)", off ? "off" : "on", off ? 80 : 160);
+#ifdef DG_SIM_UART0_INPUT
+    /* ESP_LOGI goes to USB-Serial-JTAG, which the wasm emulator does not model;
+     * rom_printf lands on UART0, so simulator runs can still see the power
+     * transitions that dg_sim_wake.mjs asserts on. */
+    esp_rom_printf("PWR screen=%s cpu=%d\n", off ? "off" : "on", off ? 80 : 160);
+#endif
 }
 
 /* ---- save slot export / import over the USB console ---------------------
@@ -2096,7 +2204,10 @@ static void menu_sub_refresh(void)
         bool sel = (i == s_sub_sel);
         lv_obj_set_style_bg_color(s_sub_row[i], lv_color_hex(MENU_YELLOW), 0);
         lv_obj_set_style_bg_opa(s_sub_row[i], sel ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
-        lv_obj_set_style_text_color(s_sub_row[i], lv_color_hex(0x17202A), 0);
+        lv_obj_set_style_text_color(s_sub_row[i], lv_color_hex(MENU_INK), 0);
+        /* value labels carry hints in some rows: reset them all to ink here so a
+         * red "RESET? B" cannot leak into another group's values */
+        if (s_sub_val[i]) lv_obj_set_style_text_color(s_sub_val[i], lv_color_hex(0x252C1F), 0);
     }
 
     if (s_sub_kind == SUB_TIME) {
@@ -2105,6 +2216,7 @@ static void menu_sub_refresh(void)
         lv_label_set_text(s_sub_name[1], "PLAY TIME");
         if (s_sub_confirm) {
             lv_label_set_text(s_sub_val[1], "RESET? B");
+            lv_obj_set_style_text_color(s_sub_val[1], lv_color_hex(HINT_RED), 0);
         } else {
             fmt_play_time(buf, sizeof buf, s_pet_sec);
             lv_label_set_text(s_sub_val[1], buf);
@@ -2318,6 +2430,11 @@ static void menu_rom_refresh(void)
     lv_label_set_text(s_rom_lbl[ROM_RESET_ROW], left);
     lv_label_set_text(s_rom_time[ROM_RESET_ROW], can ? "B x3" : "--");
     lv_obj_set_style_text_opa(s_rom_row[ROM_RESET_ROW], can ? LV_OPA_COVER : LV_OPA_40, 0);
+    /* The row-level colour below never reaches these labels: each label sets its
+     * own colour at build time, which is why this warning has always rendered in
+     * plain ink.  Paint the labels themselves. */
+    lv_obj_set_style_text_color(s_rom_lbl[ROM_RESET_ROW], lv_color_hex(HINT_RED), 0);
+    lv_obj_set_style_text_color(s_rom_time[ROM_RESET_ROW], lv_color_hex(HINT_RED), 0);
     lv_obj_set_style_text_color(s_rom_row[ROM_RESET_ROW],
                                 lv_color_hex(s_rom_confirm ? 0x8A1F14 : 0xB23A2E), 0);
 
@@ -2413,9 +2530,10 @@ static void menu_card_refresh(void)
         if (valid) {
             char nm[16];
             dg_card_label(&c, nm, sizeof nm);
-            snprintf(buf, sizeof buf, "%s%d %-10s %X/%u V%u",
+            snprintf(buf, sizeof buf, "%s%d %-10s %X/%u V%u x%u",
                      (i == s_card_sel) ? ">" : " ", i + 1, nm,
-                     (unsigned)c.slot, (unsigned)c.effort, (unsigned)c.version + 1);
+                     (unsigned)c.slot, (unsigned)c.effort, (unsigned)c.version + 1,
+                     (unsigned)c.bouts);
         } else {
             snprintf(buf, sizeof buf, "%s%d --", (i == s_card_sel) ? ">" : " ", i + 1);
         }
@@ -2424,6 +2542,58 @@ static void menu_card_refresh(void)
         lv_obj_set_style_bg_color(lbl, lv_color_hex(MENU_YELLOW), 0);
         lv_obj_set_style_bg_opa(lbl, (i == s_card_sel) ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
     }
+}
+
+/* ---- card tally clearing ------------------------------------------------
+ * All of these run with the LVGL lock held: they touch the hint label and the
+ * row labels, and the picker can be open while the ROM keeps running. */
+static void card_hint_refresh(void)
+{
+    if (!s_card_hint) return;
+    char buf[40];
+    if (!s_card_clear_mode) {
+        snprintf(buf, sizeof buf, "hold B/C 2s = clear");
+    } else {
+        snprintf(buf, sizeof buf, "%s B x%d",
+                 (s_card_clear_mode == 1) ? "CLEAR CARD?" : "CLEAR ALL?",
+                 s_card_clear_left);
+    }
+    lv_label_set_text(s_card_hint, buf);
+}
+
+static void card_clear_begin(int mode)
+{
+    s_card_clear_mode = mode;
+    s_card_clear_left = CARD_CLEAR_CONFIRMS;
+    s_card_clear_until = esp_timer_get_time() + CARD_CLEAR_TIMEOUT_US;
+    card_hint_refresh();
+    ESP_LOGI(TAG, "card clear armed (%s), %d B presses to confirm",
+             (mode == 1) ? "highlighted card" : "all cards", CARD_CLEAR_CONFIRMS);
+}
+
+static void card_clear_cancel(void)
+{
+    if (!s_card_clear_mode) return;
+    s_card_clear_mode = 0;
+    s_card_clear_until = 0;
+    card_hint_refresh();
+    ESP_LOGI(TAG, "card clear cancelled");
+}
+
+static void card_clear_commit(void)
+{
+    int mode = s_card_clear_mode;
+    s_card_clear_mode = 0;
+    s_card_clear_until = 0;
+    if (mode == 1) {
+        (void)dg_card_bouts_clear(s_card_sel);
+        ESP_LOGI(TAG, "card %d tally cleared", s_card_sel + 1);
+    } else if (mode == 2) {
+        dg_card_bouts_clear_all();
+        ESP_LOGI(TAG, "card tallies cleared (all)");
+    }
+    card_hint_refresh();
+    menu_card_refresh();
 }
 
 static void menu_card_build(lv_obj_t *parent)
@@ -2460,13 +2630,24 @@ static void menu_card_build(lv_obj_t *parent)
         lv_label_set_text(lbl, "");
         lv_obj_set_style_text_color(lbl, lv_color_hex(0x252C1F), 0);
         lv_obj_set_style_pad_hor(lbl, 3, 0);
-        lv_obj_set_pos(lbl, 8, 20 + i * 21);
+        /* 20 px pitch (was 21) leaves a 20 px band at the bottom for the hint */
+        lv_obj_set_pos(lbl, 8, 18 + i * 20);
         s_card_lbl[i] = lbl;
         s_card_widgets++;
     }
     if (s_card_widgets < CARD_MENU_ROWS) {
         ESP_LOGW(TAG, "card panel: only %d of %d rows fit the LVGL pool",
                  s_card_widgets, CARD_MENU_ROWS);
+    }
+
+    /* Long-press hint: a 2 s hold on B (or C) asks for confirmation, then three
+     * B presses wipe the tally.  A tap still starts the battle. */
+    s_card_hint = lv_label_create(s_card_menu);
+    if (s_card_hint) {
+        lv_label_set_text(s_card_hint, "hold B/C 2s = clear");
+        lv_obj_set_style_text_font(s_card_hint, &lv_font_montserrat_14, 0);
+        lv_obj_set_style_text_color(s_card_hint, lv_color_hex(HINT_RED), 0);
+        lv_obj_set_pos(s_card_hint, 8, 180);
     }
 }
 
@@ -2522,6 +2703,21 @@ static void menu_build(lv_obj_t *parent)
         s_menu_val[i] = val;
     }
 
+    /* Firmware version, bottom-right of the panel.  Five rows end at y=180 and
+     * the panel is 200 tall, so this fits under them without touching the row
+     * grid.  The whole point is that a device in someone's hand can name its
+     * own build without a serial console. */
+    lv_obj_t *ver = lv_label_create(s_menu);
+    if (ver) {
+        const esp_app_desc_t *desc = esp_app_get_description();
+        lv_label_set_text(ver, (desc && desc->version[0]) ? desc->version : "?");
+        lv_obj_set_style_text_font(ver, &lv_font_montserrat_14, 0);
+        lv_obj_set_style_text_color(ver, lv_color_hex(0x5A6350), 0);
+        /* top-right, level with the SETTINGS title: the row grid already runs to
+         * y=180 and a bottom-left tag ends up glued to the POWER highlight */
+        lv_obj_align(ver, LV_ALIGN_TOP_RIGHT, -6, 1);
+    }
+
     /* second level lives on top of the list; it stays hidden until B lands on
      * the ROM row */
     menu_rom_build(parent);
@@ -2541,6 +2737,10 @@ static void menu_set_open(bool open)
         s_rom_menu_open = false;
         s_rom_confirm = 0;
         s_card_menu_open = false;
+        /* a half-confirmed tally wipe must not survive either */
+        s_card_clear_mode = 0;
+        s_card_clear_until = 0;
+        s_card_b_down = false;
     }
     if (bsp_lvgl_lock(100)) {
         if (open) {
@@ -2551,6 +2751,7 @@ static void menu_set_open(bool open)
             if (s_rom_menu) lv_obj_add_flag(s_rom_menu, LV_OBJ_FLAG_HIDDEN);
             if (s_card_menu) lv_obj_add_flag(s_card_menu, LV_OBJ_FLAG_HIDDEN);
             if (s_sub) lv_obj_add_flag(s_sub, LV_OBJ_FLAG_HIDDEN);
+            card_hint_refresh();        /* back to the idle hint for next time */
         }
         bsp_lvgl_unlock();
     }
@@ -2600,6 +2801,8 @@ static void card_battle_begin(int idx)
     }
     dg_card_label(&c, nm, sizeof nm);
     dg_card_battle_arm(&c);
+    s_card_active = idx;              /* attribute this fight to that card */
+    s_card_counted = false;
     s_walk = 1;
     s_walk_tries = 0;
     s_walk_launched = 0;
@@ -2614,6 +2817,7 @@ static void card_walk_cancel(const char *why)
     ESP_LOGW(TAG, "card walk cancelled: %s", why);
     s_walk = 0;
     dg_card_battle_disarm();
+    s_card_active = -1;
 }
 
 static void card_walk_tick(void)
@@ -2672,6 +2876,14 @@ static void card_battle_service(void)
     if (dg_card_battle_armed() && !s_walk && s_have_rom &&
         dg_card_battle_replies() >= 2 && dg_ram(0x009) != 5) {
         dg_card_battle_disarm();
+        if (s_card_active >= 0 && !s_card_counted) {
+            s_card_counted = true;
+            if (dg_card_bouts_add(s_card_active)) {
+                ESP_LOGI(TAG, "card %d tally -> %u", s_card_active + 1,
+                         (unsigned)dg_card_bouts(s_card_active));
+            }
+        }
+        s_card_active = -1;
     }
 }
 
@@ -2903,6 +3115,11 @@ static void menu_key(uint8_t mask)
 #define HUD_BOTTOM_MARGIN 4
 static lv_obj_t *s_ver_lbl;
 static lv_obj_t *s_pct_lbl;
+/* Current ROM's play time, bottom-left: "6:40" = hours:minutes.  Minute is the
+ * smallest unit on purpose -- the ROM itself only keeps minutes, and a seconds
+ * field would repaint the label 60x more often for no information. */
+static lv_obj_t *s_play_lbl;
+static uint32_t s_play_shown_min = 0xFFFFFFFFu;
 static lv_obj_t *s_scr, *s_rim, *s_well;
 /* Style C has no furniture objects left: the frame lines, the strap lug and the
  * two bars were all rejected one by one.  What remains is the brick texture on
@@ -2966,6 +3183,25 @@ static void battery_ui_build(lv_obj_t *scr)
     lv_obj_set_style_text_font(s_ver_lbl, &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_color(s_ver_lbl, lv_color_hex(HUD_COLOR), 0);
     lv_obj_align_to(s_ver_lbl, s_pct_lbl, LV_ALIGN_OUT_LEFT_BOTTOM, -6, 0);
+
+    /* play time sits on the opposite corner, in the strip left of the glass */
+    s_play_lbl = lv_label_create(scr);
+    lv_label_set_text(s_play_lbl, "0:00");
+    lv_obj_set_style_text_font(s_play_lbl, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(s_play_lbl, lv_color_hex(HUD_COLOR), 0);
+    lv_obj_align(s_play_lbl, LV_ALIGN_BOTTOM_LEFT, HUD_RIGHT_MARGIN, -HUD_BOTTOM_MARGIN);
+}
+
+/* caller must hold the LVGL lock */
+static void hud_set_play(uint32_t sec)
+{
+    if (!s_play_lbl) return;
+    uint32_t mins = sec / 60u;
+    if (mins == s_play_shown_min) return;      /* repaint only when it changes */
+    s_play_shown_min = mins;
+    char buf[12];
+    snprintf(buf, sizeof buf, "%u:%02u", (unsigned)(mins / 60u), (unsigned)(mins % 60u));
+    lv_label_set_text(s_play_lbl, buf);
 }
 
 /* ---- NO ROM overlay ------------------------------------------------------
@@ -3043,6 +3279,7 @@ static void battery_ui_update(void)
 {
     if (!s_pct_lbl) return;
     hud_set_soc(bsp_battery_soc());
+    hud_set_play(s_pet_sec);              /* same 30 s cadence: minute precision */
     s_batt_next_us = esp_timer_get_time() + BATT_REFRESH_US;
 }
 
@@ -3188,13 +3425,31 @@ static void switch_rom(int idx)
 }
 
 // ---- main loop ----------------------------------------------------------
+/* Suspend/resume live here, in the only task that ever touches the codec, so a
+ * bsp_audio_sleep() can never tear down a PCM write that is in flight.  The
+ * main loop only flips s_audio_want; it never blocks on I2C. */
 static void audio_task(void *arg)
 {
     (void)arg;
     audio_block_t b;
+    int fail_logged = 0;
     for (;;) {
-        if (xQueueReceive(s_audio_q, &b, portMAX_DELAY) == pdTRUE) {
-            bsp_audio_write(b.pcm, sizeof(b.pcm));
+        if (!s_audio_want && !s_audio_asleep) {
+            esp_err_t e = bsp_audio_sleep();
+            s_audio_asleep = true;          /* the BSP latches its sleeping flag */
+            ESP_LOGI(TAG, "audio suspend: %s", esp_err_to_name(e));
+        } else if (s_audio_want && s_audio_asleep) {
+            esp_err_t e = bsp_audio_wake();
+            if (e == ESP_OK) {
+                s_audio_asleep = false;
+                xQueueReset(s_audio_q);     /* drop what queued up while dark */
+                fail_logged = 0;
+            } else if (fail_logged++ < 3) {
+                ESP_LOGW(TAG, "audio resume failed (%s), retrying", esp_err_to_name(e));
+            }
+        }
+        if (xQueueReceive(s_audio_q, &b, pdMS_TO_TICKS(250)) == pdTRUE) {
+            if (s_audio_want) bsp_audio_write(b.pcm, sizeof(b.pcm));
         }
     }
 }
@@ -3334,13 +3589,50 @@ static void dg_task(void *arg)
                         continue;
                     }
                     if (s_menu_open) {
-                        menu_key(1);
+                        /* A tap on C cancels a pending tally wipe; otherwise it
+                         * backs out of the current level, as it always did. */
+                        if (s_card_menu_open && s_card_clear_mode) {
+                            if (bsp_lvgl_lock(200)) { card_clear_cancel(); bsp_lvgl_unlock(); }
+                        } else {
+                            menu_key(1);
+                        }
                         continue;
                     }
                 }
             }
 
             if (s_menu_open) {
+                /* Card picker, B: a tap starts the battle, a 2 s hold (handled by
+                 * the periodic check) arms the confirmation, and while the
+                 * confirmation is up every B press counts down. */
+                if (s_card_menu_open && e.mask == 2) {
+                    if (e.down) {
+                        if (s_card_clear_mode) {
+                            if (bsp_lvgl_lock(200)) {
+                                if (--s_card_clear_left <= 0) card_clear_commit();
+                                else card_hint_refresh();
+                                bsp_lvgl_unlock();
+                            }
+                        } else {
+                            s_card_b_down = true;
+                            s_card_b_press_us = now_us;
+                        }
+                    } else if (s_card_b_down) {
+                        s_card_b_down = false;
+                        if (now_us - s_card_b_press_us < CARD_CLEAR_HOLD_US) menu_key(2);
+                    }
+                    s_key_pending = 0;
+                    continue;
+                }
+                /* Card picker, A: cancels the confirmation instead of moving */
+                if (s_card_menu_open && e.mask == 4 && s_card_clear_mode) {
+                    if (e.down && bsp_lvgl_lock(200)) {
+                        card_clear_cancel();
+                        bsp_lvgl_unlock();
+                    }
+                    s_key_pending = 0;
+                    continue;
+                }
                 if (e.down && e.mask != 1) menu_key(e.mask);
                 s_key_pending = 0;
                 continue;
@@ -3401,6 +3693,30 @@ static void dg_task(void *arg)
             s_key_pending = 0;
             s_key_release_at = 0;
             menu_set_open(true);
+        }
+
+        /* Card picker: a 2 s hold arms the wipe confirmation -- B for the
+         * highlighted card, C for all of them.  It fires while the finger is
+         * still down, and the buttons are consumed so the release cannot also
+         * start a battle or close the panel.  The confirmation expires by
+         * itself, and A or C cancels it. */
+        if (s_card_menu_open && !s_card_clear_mode) {
+            int64_t hold_now = esp_timer_get_time();
+            int clear_mode = 0;
+            if (s_card_b_down && (hold_now - s_card_b_press_us) >= CARD_CLEAR_HOLD_US) {
+                s_card_b_down = false;
+                clear_mode = 1;
+            } else if (s_ok_down && s_ok_armed &&
+                       (hold_now - s_ok_press_us) >= CARD_CLEAR_HOLD_US) {
+                s_ok_armed = false;
+                clear_mode = 2;
+            }
+            if (clear_mode && bsp_lvgl_lock(200)) {
+                card_clear_begin(clear_mode);
+                bsp_lvgl_unlock();
+            }
+        } else if (s_card_clear_mode && esp_timer_get_time() >= s_card_clear_until) {
+            if (bsp_lvgl_lock(200)) { card_clear_cancel(); bsp_lvgl_unlock(); }
         }
 
         /* Hold A in the clock screen -> inject A+C, which is how the real unit
@@ -3503,7 +3819,9 @@ static void dg_task(void *arg)
             save_slot(s_rom_idx);
         }
 
-        if (s_audio_q) {
+        /* No PCM while the panel is dark: the codec is suspended by audio_task,
+         * so feeding the queue would only fill it with blocks nobody plays. */
+        if (s_audio_q && s_audio_want) {
             audio_block_t b;
             if (s_have_rom) {
                 fill_audio(&b);
@@ -3513,12 +3831,18 @@ static void dg_task(void *arg)
             xQueueSend(s_audio_q, &b, 0);
         }
 
-        if (bsp_lvgl_lock(10)) {
+        /* A dark panel means nothing to draw.  Skipping the whole LVGL block
+         * also keeps SPI2 idle -- every flush takes the driver's APB lock, and
+         * that is the one thing that would drag the CPU back to APB_MAX. */
+        if (!s_screen_off && bsp_lvgl_lock(10)) {
             /* With no ROM the glass keeps the base tone plus the unlit icon
              * bands; render_lcd() would stamp whatever the VRAM shadow holds. */
             if (s_have_rom) (void)render_lcd();
             render_icons();
-            if (esp_timer_get_time() >= s_batt_next_us) battery_ui_update();
+            if (s_force_batt || esp_timer_get_time() >= s_batt_next_us) {
+                battery_ui_update();
+                s_force_batt = false;
+            }
             bsp_lvgl_unlock();
         }
 

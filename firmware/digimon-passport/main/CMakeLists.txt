@@ -19,7 +19,7 @@ endif()
 idf_component_register(
     SRCS ${DG_APP_SRCS}
     INCLUDE_DIRS "." "core"
-    REQUIRES bsp nvs_flash esp_timer esp_partition heap driver
+    REQUIRES bsp nvs_flash esp_timer esp_partition heap driver esp_app_format
 )
 
 if(DG_VPET_NATIVE)

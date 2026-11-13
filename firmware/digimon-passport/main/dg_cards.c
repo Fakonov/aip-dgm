@@ -14,7 +14,11 @@
 static const char *TAG = "dgcards";
 
 #define DG_CARD_NVS_NS    "digicard"
-#define DG_CARD_BLOB_LEN  18u
+/* 20 bytes since 2.1.1: bytes 18..19 carry the battle tally (little endian).
+ * Bytes 0..17 keep the original layout, so an 18-byte blob written by 2.1.0
+ * still loads -- the tally simply reads as 0 and is rewritten on the next save. */
+#define DG_CARD_BLOB_LEN          20u
+#define DG_CARD_BLOB_LEN_LEGACY   18u
 #define DG_CARD_MAGIC0    'D'
 #define DG_CARD_MAGIC1    'G'
 #define DG_CARD_MAGIC2    'C'
@@ -61,7 +65,9 @@ void dg_cards_init(void)
         uint8_t raw[DG_CARD_BLOB_LEN];
         size_t len = sizeof raw;
         card_key(i, key, sizeof key);
-        if (nvs_get_blob(h, key, raw, &len) != ESP_OK || len != sizeof raw) continue;
+        if (nvs_get_blob(h, key, raw, &len) != ESP_OK) continue;
+        /* 18 = pre-2.1.1 layout without the battle tally; anything else is junk */
+        if (len != DG_CARD_BLOB_LEN && len != DG_CARD_BLOB_LEN_LEGACY) continue;
         if (raw[0] != DG_CARD_MAGIC0 || raw[1] != DG_CARD_MAGIC1 ||
             raw[2] != DG_CARD_MAGIC2 || raw[3] != DG_CARD_MAGIC3) continue;
         dg_card_t c;
@@ -71,6 +77,9 @@ void dg_cards_init(void)
         c.version = raw[6];
         memcpy(c.name, raw + 7, DG_CARD_NAME_LEN);
         c.name[DG_CARD_NAME_LEN] = 0;
+        c.bouts = (len >= DG_CARD_BLOB_LEN)
+                ? (uint16_t)((uint16_t)raw[18] | ((uint16_t)raw[19] << 8))
+                : 0;
         if (!card_sane(&c)) continue;
         s_slots[i] = c;
         s_valid |= (uint8_t)(1u << i);
@@ -108,6 +117,8 @@ bool dg_card_save(int idx, const dg_card_t *card)
     raw[5] = c.effort;
     raw[6] = c.version;
     memcpy(raw + 7, c.name, DG_CARD_NAME_LEN);
+    raw[18] = (uint8_t)(c.bouts & 0xFF);
+    raw[19] = (uint8_t)(c.bouts >> 8);
 
     nvs_handle_t h;
     esp_err_t err = nvs_open(DG_CARD_NVS_NS, NVS_READWRITE, &h);
@@ -165,6 +176,38 @@ int dg_card_count(void)
     for (int i = 0; i < DG_CARD_SLOTS; i++)
         if (s_valid & (1u << i)) n++;
     return n;
+}
+
+/* ---- battle tally ------------------------------------------------------- */
+
+uint16_t dg_card_bouts(int idx)
+{
+    if (!s_loaded) dg_cards_init();
+    if (idx < 0 || idx >= DG_CARD_SLOTS) return 0;
+    if (!(s_valid & (1u << idx))) return 0;
+    return s_slots[idx].bouts;
+}
+
+bool dg_card_bouts_add(int idx)
+{
+    dg_card_t c;
+    if (!dg_card_load(idx, &c)) return false;
+    if (c.bouts < 0xFFFFu) c.bouts++;
+    return dg_card_save(idx, &c);
+}
+
+bool dg_card_bouts_clear(int idx)
+{
+    dg_card_t c;
+    if (!dg_card_load(idx, &c)) return false;
+    if (c.bouts == 0) return true;      /* already clear: do not touch flash */
+    c.bouts = 0;
+    return dg_card_save(idx, &c);
+}
+
+void dg_card_bouts_clear_all(void)
+{
+    for (int i = 0; i < DG_CARD_SLOTS; i++) (void)dg_card_bouts_clear(i);
 }
 
 void dg_card_label(const dg_card_t *card, char *buf, size_t n)

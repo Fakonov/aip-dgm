@@ -30,6 +30,7 @@ typedef struct {
     uint8_t slot;                    /* ROM species slot, 3..14 */
     uint8_t effort;                  /* 0..4 (same range the ROM sends) */
     uint8_t version;                 /* 0 = V1, 1 = V2, 2 = V3, 3 = V4 */
+    uint16_t bouts;                  /* battles fought with this card */
     char    name[DG_CARD_NAME_LEN + 1];
 } dg_card_t;
 
@@ -47,6 +48,15 @@ int  dg_card_count(void);
 
 /* Human-readable label for the menu / console: the stored name, or "SLOT n". */
 void dg_card_label(const dg_card_t *card, char *buf, size_t n);
+
+/* ---- battle tally -------------------------------------------------------
+ * Stored in the same NVS blob as the card itself, so it survives reboots and
+ * ROM switches.  dg_cards_init() also accepts the pre-2.1.1 blob length (18
+ * bytes) and treats those cards as "0 battles" -- no migration write needed. */
+uint16_t dg_card_bouts(int idx);          /* 0 for an empty slot */
+bool     dg_card_bouts_add(int idx);      /* +1, saturating at 65535 */
+bool     dg_card_bouts_clear(int idx);
+void     dg_card_bouts_clear_all(void);
 
 /* ---- the card as the answering peer ------------------------------------
  * Arm before the ROM starts talking (i.e. when the battle screen is entered),

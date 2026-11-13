@@ -127,16 +127,27 @@ uartSend('CARDW 0 A 3 1 CARDTEST\n', 0.3);
 uartSend('CARDL\n', 0.4);
 uartSend('CARDST\n', 0.3);
 
-/* settings menu: long OK opens it, then A (=UP) walks SKIP -> PLAY -> ROM -> BATTLE */
+/* settings menu: long OK opens it, then A (=UP) walks TIME -> ROM -> BATTLE.
+ * Two presses since the five-row menu landed in round 107; the old three-step
+ * version came from the nine-row list and silently opened APPEAR instead. */
 console.log('-- opening the settings menu');
 await press('OK', 3.4, 0.8);
 await shot('01_menu_skip');
-for (let i = 0; i < 3; i++) await press('UP', 0.35, 0.35);
+for (let i = 0; i < 2; i++) await press('UP', 0.35, 0.35);
 await shot('02_menu_battle_row');
 
 console.log('-- opening the card picker (B on the BATTLE row)');
 await press('DOWN', 0.35, 0.8);
 await shot('03_card_picker');
+
+console.log('-- 2 s hold on B arms the tally wipe, B x3 confirms');
+await press('DOWN', 2.6, 0.6);            // B held past CARD_CLEAR_HOLD_US
+await shot('05_clear_prompt');
+await press('DOWN', 0.3, 0.4);            // confirm 3 -> 2
+await press('DOWN', 0.3, 0.4);            // confirm 2 -> 1
+await press('DOWN', 0.3, 0.8);            // commit
+await shot('06_after_clear');
+uartSend('CARDL\n', 0.3);
 
 uartSend('CARDST\n', 0.3);
 console.log('-- back out and arm the card from the console');
