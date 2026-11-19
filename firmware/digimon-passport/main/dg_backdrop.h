@@ -7,8 +7,12 @@
  *
  * Generated/rewritten by the R2 audit (docs/AUDIT-R2.md §4.2).
  */
-#ifndef DG_BACKDROP_H
-#define DG_BACKDROP_H
+/* The include guard used to be DG_BACKDROP_H -- the same macro the height below
+ * defines -- so every TU that included this header also got a
+ * "'DG_BACKDROP_H' redefined" warning (and any `#if DG_BACKDROP_H` in another
+ * header would have seen 183).  Renamed 2026-11-13 (R3); no functional change. */
+#ifndef DG_BACKDROP_H_INCLUDED
+#define DG_BACKDROP_H_INCLUDED
 
 #include <stdint.h>
 
@@ -1144,4 +1148,4 @@ static const uint8_t dg_backdrop[35136] = {
     182, 182, 182, 182, 182, 182, 182, 182, 179, 182, 182, 182, 182, 182, 182, 182, 182, 182, 196, 196, 196, 193, 196, 196, 196, 196, 196, 196, 196, 196, 199, 179,
 };
 
-#endif /* DG_BACKDROP_H */
+#endif /* DG_BACKDROP_H_INCLUDED */

@@ -8,9 +8,13 @@
 > **复盘与方法论**：`docs/RETROSPECTIVE.md`（十条可复用方法、工具清单、坑的分类学、开工清单）
 > **v2.0.1 全项目审计**：`docs/AUDIT-2.0.1.md`（flash/RAM/每帧分账、实测优化清单、可复现实验）；
 > **v2.1.0 第二轮审计**：`docs/AUDIT-R2.md`（落地复核、四处新发现、合并构建实测）；
+> **v2.1.2 第三轮审计**：`docs/AUDIT-R3.md`（每帧只跑 139 step/110 指令、98 % 空转；
+> 浅睡/背光/音频三条省电路线；脏矩形与免字节交换；pitch 7 与图标 1:1 的画面意见）；
+> 实验素材 `tools/audit/r3/`（`bench_loop.c`、`probe_det.c`）；
 > **可复用方法论**：`docs/METHODOLOGY.md`（性能审计七步法、度量门禁矩阵、反模式清单）
 > PC 工具：`tools/digimon_studio.html`（说明见 `docs/studio-tool.md`）
-> **当前指纹**：固件 `0xFC500` = 1,033,472 B，SHA256 `94d32e38…`
+> **当前指纹**（round 104 的历史值；**最新见下面 §现在在哪儿 round 127：`2.1.4` / `0xB7FA0`**）：
+> 固件 `0xFC500` = 1,033,472 B，SHA256 `94d32e38…`
 > （round 104：石墙边界横缝改 ±3 px 波浪 + 自动存档 300 s→**60 s**；
 > 2026-11-09 00:3x 已刷 COM5，`Wrote 1033472` + `Hash of data verified`，
 > 真机日志 `I (60694) saved digimon (1304 B)` = 60.7 s 准时落盘）；
@@ -85,7 +89,7 @@
 > 曾因此把 16 处 `<home>` 推上 `main`（`7446312`/`3790644`，历史里仍保留），
 > 复制后 `grep DuWeisi` 必须为 0 再 commit；`git add -A` 也会把根目录杂物一起带上。
 > 已知：`DigimonV1ES`（`0xBD56E590`）仍无规则表，会显示「暂无规则表（显示 V1）」。
-> **round 94/95/96 改动**（2026-11-08，已刷 COM5）：SKIP 加 12H/24H、背光默认 70 %、存档 60 s→5 min（**round 104 已按用户要求改回 60 s**）、
+> **round 94/95/96 改动**（2026-11-08，已刷 COM5）：SKIP 加 12H/24H（**round 127 已删 24H、改补 4H/6H/8H**）、背光默认 70 %、存档 60 s→5 min（**round 104 已按用户要求改回 60 s**）、
 > 石墙 tile 192→128（密度按实机反馈三次调，定稿 `ROWS=3` / 每行一条缝 / 线宽 5 px；
 > round 103 把 tile 边界那条横缝改成 ±3 px 波浪并用 wrap 画法补满 5 px，其余横缝/竖缝没动）、墨色 `#1B2417`→`#2E382C`、删 592 项死色表；
 > **菜单一级 9 → 5 行**（TIME / ROM / BATTLE / APPEAR / POWER，后三组共用二级面板）；
@@ -140,6 +144,49 @@
 
 ---
 
+## 现在在哪儿（2026-11-19 22:2x，round 128，2.1.5 已刷 COM5，复测 ratio 1.00000）
+
+> **当前产物：`2.1.5`，固件 `0xB8100` = 753,920 B，SHA256 `F946EA97…`；已刷 COM5（app-only，存档/ROM 保留），真机复测 `ratio 1.00000`。**
+> 交付文件名 **`digimon-passport2.1.5.bin`**（`build/` 与 `dist/` 各一份，由 `tools/pack_app.py` 生成）。
+> **git 停在 `673035f`（round 128 代码提交：2.1.5 帧预算 + 六个漂移探针 + `serial_state.py`）；未 push、未打 tag、未发布。**
+> round 128（本轮）= **游戏时钟偏快修复**（社区反馈「按 B 键那个时间越来越快」）。
+> 真机 2.1.4 实测：600 s 墙钟走 602 s 游戏时钟，**ratio 1.00331 = 每天快 4.8 分钟**，社区版 2.1.0/2.1.2 同样偏快。
+> 根因是 `dg_task()` 每帧 `while (ticks < tick_target) dg_step();` 的**超推无补偿**（+2.85 tick/帧）
+> 加上 `TICKS_PER_FRAME` 整型截断（655 而非 655.36）；改成**墙钟预算 + 余数/超推跨帧 carry**。
+> 详见 `PROGRESS.md` round 128，坑见本文坑 **54**。
+> **2.1.5 复测（2026-11-19 22:23，同脚本 600 s）：`game clock 600 s, ratio 1.00000 (+0.0 s/day)`，缺陷关闭。**
+> 下面表格里 round 125 那批（脏矩形 / 免字节交换 / 唤醒源）代码未回退、仍然有效；
+> 2.1.3 的指纹（753,552 B / `0xB7F90` / `029572AE…`）留档在 `PROGRESS.md` round 125。
+
+> **round 125 记录（历史）**：R3 第一批已改完、已刷 COM5、用户初验通过；版本号定为 `2.1.3`；用户拿真机玩一天再定是否收口。
+> 详细记录见 `PROGRESS.md` round 125，审计见 `docs/AUDIT-R3.md`。
+
+| 项 | 值 |
+|---|---|
+| 固件（2.1.5 当前指纹，round 128） | `build/FoloToy-AI-Passport.bin` = **753,920 B**（`0xB8100`），SHA256 `F946EA97…`（上一版 2.1.4 是 753,568 B / `0xB7FA0` / `A86F6047…`，差 +352 B = 新的 `osc1_frame_budget()` 与三处 carry + 注释） |
+| 版本号 | `version.txt` = **2.1.5** |
+| 归档 | `docs/backup/digimon-app-2.1.3-2026-11-14.bin`（被 .gitignore 忽略，别删） |
+| 设备里跑的 | **2.1.4**（`0xB7FA0` / `A86F6047…`，2026-11-17 20:0x `--AppOnly` 刷入）；restart 后菜单右下角显示 `2.1.4` |
+| round 128 改了什么 | `main/digimon_app.c`：新增 `osc1_frame_budget()`（按 `esp_timer_get_time()` 墙钟差算每帧 tick 预算，上限 4 帧 = 80 ms），三个静态量 `s_frame_us` / `s_frame_rem`（1/1000 tick 余数）/ `s_frame_over`（上一帧超推，下帧先扣）；首帧块与主循环都改成 `dg_osc1_ticks() + osc1_frame_budget()` 并在循环后回写 `s_frame_over`；`rom_skip_minutes()` 收尾清零这三个量；`version.txt` 2.1.4 → `2.1.5` |
+| round 127 改了什么 | SKIP TIME 档位表 7 档 → **9 档**：删 `24*60`、加 `4*60 / 6*60 / 8*60`（`main/digimon_app.c` 的 `SKIP_MINUTES[]` / `SKIP_TEXT[]`，`SKIP_COUNT` 自动跟随）；`SKIP_TEXT` 的 `/nS` 后缀按 75 s/游戏小时重算（4H=300S、6H=450S、8H=600S、12H=900S）；`rom_skip_minutes()` 注释里的 24 h 换成 12 h、uint32 溢出阈值量级 ~12.4 h → ~24.8 h；`version.txt` 2.1.3 → `2.1.4` |
+| 改了什么 | ① `render_lcd` 脏矩形（只重画变化格 + 只失效脏矩形）② 图标带按槽重贴 ③ flush 免软件字节交换（`RGB565_SWAPPED` 直出）④ LVGL tick 5→20 ms、按键轮询 5→20 ms ⑤ `dg_backdrop.h` 的 include guard 改名 |
+| 新增文件 | `main/dg_glass_paint.h`（纯函数绘制层）、`src/glass_paint_test.c`（主机逐像素等价测试） |
+| 已过门禁 | `glass_paint_test` PASS（两种主题各 2000 步脏刷新逐字节等价）、`test_core` ALL MATCH、设备构建 0 warning、仿真构建 OK |
+| 真机实测 | `Wrote 753552` + Hash verified；50.0 fps 连续 40 s 无重启；存档/六 ROM 槽/AGES 全在；熄屏 80 MHz + autosave + audio suspend 正常且无 i2s 噪音；用户目视画面正常 |
+| 真机实测（round 127，2.1.4） | 2026-11-17 20:0x 刷 COM5，`--AppOnly` 写 `0x10000`：**`Wrote 753568 bytes` + `Hash of data verified`**；串口 16 s 窗口无 panic/Guru/watchdog，`alive frame` 1250→1750（5 s 一档 = **50 fps**）；`STATE slot=5 age=502618 win=15 bouts=15` → **存档完好**；串口 `SKIP 5` 真跑：`skip done: SKIP 5M at 3031040 steps, stage 1197/7255, age 502968 s`，随后 `saved DigimonV1ES (1304 B)` **跳完即落盘** —— 证明新的 9 档数组没破坏跳过路径 |
+| 真机实测（round 128 时钟，2.1.4） | `tools/audit/r3/serial_state.py --port COM5 --interval 600`（DTR=True 不复位，读 `STATE age=`）：`wall 600.0 s, game clock 602 s, ratio 1.00331 (+285.7 s/day)` —— **每天快 4.8 分钟**，与主机探针 `src/tick_drift6.c` 预测的 1.0033 完全吻合 |
+| 真机实测（round 128 复测，2.1.5） | 2026-11-19 22:2x 刷 COM5（app-only）：**`Wrote 753920 bytes` + `Hash of data verified`**；14 s 窗口 `alive frame` 250→750（50 fps）、无 panic，`STATE slot=5 age=743203` **存档保留**；同脚本 600 s 复测 **`game clock 600 s, ratio 1.00000 (+0.0 s/day)`**，`stage 86:41 → 86:51` 同步走 10 分钟 → **缺陷关闭** |
+| **没过的门禁** | 无。~~「仿真截图跑不了，node 已不存在」~~ 这条是误判（`node` 一直在，绝对路径见本文「仿真」一节的 :784）；2026-11-17 round 127 用 `dg_sim_skip.mjs` / `dg_sim_skip_rungs.mjs` 把 SKIP 9 档逐档截了图，全绿 |
+| 待办（一天观察后） | ① 有异常就按症状回滚（脏矩形 / 字节交换是独立两块）② 要标签对上就重刷 2.1.3（3 s）③ 下一批：音频静音挂起 → PM + 自动浅睡 → 背光 `AUTO DIM` + 面板 SLPIN → 熄屏补存档 |
+| 待办（round 127 剩余） | 只剩**人眼按键确认**：二级里 B 键循环顺序 OFF→5M→30M→1H→2H→4H→6H→8H→12H→OFF（仿真 9 档逐档截图已全绿，见「没过的门禁」行）。墙钟口径（75 s/游戏小时）：4H≈5 min、6H≈7.5 min、8H≈10 min、12H≈15 min |
+| **已知未决（round 126）** | **连续机内对战几次后偶发重启，未定位**。崩溃时设备在电池上、无串口、无 panic 文本；当前 brownout 电平是**最高档 7（≈2.8 V）**，且固件不保留任何崩溃取证。判别法：**插 USB 打同样场次**——不复现 → 掉电复位；照样复现 → 软件。复现脚本 `tools/audit/r3/battle_repro.py` 已就绪 |
+
+**一天测试盯什么**：长时间亮屏是否有偶发卡顿/掉帧；熄屏→唤醒是否每次都能整屏重画；
+宠物走动/进化/对战时点阵有没有错位或残影；菜单与卡片页反复开关是否正常；有没有意外重启（看 `reset reason`）。
+异常现象贴给我，按"脏矩形 / 字节交换 / tick 节奏"三块分别定位。
+
+---
+
 ## 现在是什么状态（可直接继续）
 
 | 项 | 状态 |
@@ -160,10 +207,10 @@
 | HUD | **底部右侧一行**：`V1`（或 `--`）+ `82%`（14px），右边缘停在 x=304（再往右被 30 px 圆角遮罩切）；电池图标已删 |
 | 段映射 | mode 2..8 → 状态/病毒/药/对战/便便/灯泡/创可贴；`(0,0)` = 呼叫，孵化后常亮 |
 | 菜单 | **游戏里按住 OK 满 3 s 当场弹出**（不用等松手），半透明面板 300×200（`LV_OPA_90` + 阴影），黄底光标，**一级 5 行**：**TIME** / **ROM** / **BATTLE** / **APPEAR** / **POWER**（行高 24 / 间距 30 / 起点 36；没有 EXIT，C 直接关；SAVE OUT/IN 已挪到 PC 端）。**TIME / APPEAR / POWER 打开同一个二级面板**（最多 3 行 × 2 列）：`A` 移动、`B` 改值、`C` 返回一级 |
-| 菜单二级 · TIME | `SKIP TIME`（OFF/5M/30M/1H/2H/12H/24H，**仍是一级面板关闭那一刻生效**）+ `PLAY TIME`（`1H13M`，**B 两次清零**，第一下只显示 `RESET? B`，移动光标即取消） |
+| 菜单二级 · TIME | `SKIP TIME`（**9 档**：OFF/5M/30M/1H/2H/4H/6H/8H/12H，**仍是一级面板关闭那一刻生效**；round 127 删 24H、补 4/6/8H）+ `PLAY TIME`（`1H13M`，**B 两次清零**，第一下只显示 `RESET? B`，移动光标即取消） |
 | 菜单二级 · APPEAR | `STYLE`（A CLASSIC ⇄ C RETAIL）+ `SHELL`（8 色循环） |
 | 菜单二级 · POWER | `BRIGHT`（20–100 %）+ `VOLUME`（0–100 %）+ `AUTO OFF`（NEVER/15S/30S/1M/2M/5M） |
-| SKIP 执行 | 档位 OFF/5M/30M/1H/2H/12H/24H，选好**关一级菜单那一刻生效**（一次性，用完自动复位 OFF）。实现是**真跑游戏时间**（见坑 19），玻璃上弹 `SKIP 2H  45% / C=STOP` 卡片，C 可中途取消 |
+| SKIP 执行 | 档位 **OFF/5M/30M/1H/2H/4H/6H/8H/12H**（9 档，档位文字后缀 `/nS` 是按 75 s/游戏小时估的墙钟耗时：5M=9S、30M=38S、1H=75S、2H=150S、4H=300S、6H=450S、8H=600S、12H=900S）。24H 已按用户要求删除（真跑约 30 分钟墙钟，而且跳过期间宠物会饿到濒死，见坑 41）。选好**关一级菜单那一刻生效**（一次性，用完自动复位 OFF）。实现是**真跑游戏时间**（见坑 19），玻璃上弹 `SKIP 2H  45% / C=STOP` 卡片，C 可中途取消 |
 | PLAY TIME 存档 | 原名 AGE：养育总时间（从孵化算起，含跳过的时间），`1H13M` 格式，跟着 ROM 槽存 NVS `a0..a7` |
 | 菜单 ROM 行 | 右侧 `V1 >`，**按 B 进二级槽位表**：8 个槽一行一个，左列 `序号 *名字`（`*` = 当前槽），右列该槽存档的 PLAY TIME（空槽压暗、`--`）。`A` 移动、`B` 启动、`C` 返回一级。进二级时一级面板要先 `HIDDEN`，否则半透明叠半透明全是残影 |
 | 菜单重置存档 | 二级列表最后一行红字 `RESET SAVE <当前 ROM>`，`B` 三道门：`SURE?` → `REALLY?` → 擦 `s%d`+`a%d`；重置的就是在跑的那只时还会 `dg_reset()` 回蛋（ROM 自己清 RAM，等于冷启动），**ROM 镜像不动**。作用于**当前激活槽**而非光标槽——只有一个 `A` 键，跟随光标必然指到最下面那个槽 |
@@ -408,10 +455,11 @@ ESP-NOW 旧实现，`M4B BUTTONS-ONLY: PASS` 过了多次。
 
 ## 息屏省电：CPU 80 MHz + 停渲染 + 挂 codec（round 119，2026-11-13 真机通过）
 
-> **当前版本：`2.1.2`（未发布）** —— `version.txt` 已升到 2.1.2，
-> **没有打 tag、没有推 GitHub、没有提社区**，等下面「待办」清完再走
-> [RELEASE-RULES.md](RELEASE-RULES.md) 的发布流程。
-> 线上（社区 revision 5383 / GitHub Release）仍是 **2.1.0**。
+> **当前版本：`2.1.2` —— 已于 2026-11-13 发布到 GitHub**
+> （Release `444351656`，tag `v2.1.2`，四件套齐全；公开树 commit `ee57185`）。
+> 发布包在 `Desktop\dsh sth\aip-dgm\release\aip-dgm-v2.1.2\` 与 `…-v2.1.2-github\`。
+> **社区（FoloToy）也已提交**：玩法 1969，`revisionId` **5545**，`status: pending`（待审核）。
+> 玩家端仍是 **revision 5383（2.1.0，approved）**，审核通过前不变。
 >
 > **当前真机基线（用户 2026-11-13 确认「就这样」）**：
 > `0xB7B10` = **752,400 B**，SHA256 `79A6277D…`，
@@ -676,6 +724,11 @@ node tools\dg_sim_wake.mjs docs\ui-sim\full-sim-power.bin docs\ui-sim-power
 # 编译（本机 PowerShell 5.1 下 build.ps1 会被 export.ps1 的 stderr 打断，用这个包装脚本）
 powershell -NoProfile -ExecutionPolicy Bypass -File <home>\digimon-passport\build_local.ps1
 
+# 交付镜像命名（2026-11-17 用户规定：交给用户的 bin 叫 digimon-passport<版本号>.bin）
+# build_local.ps1 构建成功后会自动跑这一步；用 pt-build 时手动补一次
+python tools\pack_app.py            # -> build/digimon-passport<版本号>.bin 与 dist/digimon-passport<版本号>.bin
+python tools\pack_app.py --check    # 只校验版本化副本与 IDF 产物同哈希（不同则退出码 1）
+
 # 合并镜像（idf.py build 不会重建 full.bin！模拟器要用它）
 python tools\mk_full_bin.py
 # 想预置 ROM（仿真直接开局 / 救砖带 ROM）：
@@ -709,7 +762,7 @@ $py = "<home>\.espressif\python_env\idf5.5_py3.11_env\Scripts\python.exe"
     0x8000 build\partition_table\partition-table.bin `
     0x10000 build\FoloToy-AI-Passport.bin
 
-# B. 之后日常升级：只刷 app
+# B. 之后日常升级：只刷 app（build\digimon-passport<版本号>.bin 与它逐字节相同，刷哪个都行）
 & $py -m esptool --chip esp32c3 -p COM5 -b 921600 write_flash `
     --flash_mode dio --flash_freq 80m --flash_size 8MB `
     0x10000 build\FoloToy-AI-Passport.bin
@@ -1145,7 +1198,27 @@ POWER 二级面板，而脚本还按「A ×4 直接到 AUTO OFF」走，结果�
     `(uint32_t)(now - last)` / `(int32_t)(now - target) < 0` 的差值写法，**36.4 小时回绕也安全**。
     所以**不需要为了计时去定期重启**；以后新增功能照差值写就行。
 
+54. **每帧 tick 预算要按墙钟算 + 跨帧 carry，别用「固定常数 + `while (ticks < target)`」**
+    （round 128，社区反馈 + 真机实测）。`dg_step()` 只能整条指令地跑：快模式一步约 0.22 tick、
+    慢模式一步 6~7 tick，所以循环停下时平均已经多推 **+2.85 tick/帧**。旧写法
+    `tick_target = dg_osc1_ticks() + TICKS_PER_FRAME` 从不扣回这份超推，实测 ROM 时钟
+    **ratio 1.0033 = 每天快 4.8 分钟**（真机 600 s 窗口：墙钟 600 s、游戏时钟 602 s）。
+    同时 `(OSC1_HZ * FRAME_MS / 1000)` 是整型表达式，655.36 被截成 **655**（每天反而慢 47 s），
+    两个错互相抵消一部分，所以拖到社区反馈才暴露。慢/快模式比例随 ROM 当前行为变 → 漂移率不是常数，
+    这就是玩家说的「越来越快」。
+    **现在的写法**：`osc1_frame_budget()` 用 `esp_timer_get_time()` 的差值算预算，
+    `s_frame_rem` 存 1/1000 tick 余数，`s_frame_over` 存上一帧超推并在下一帧预扣，
+    单帧上限 4 帧（80 ms）；`rom_skip_minutes()` 收尾必须把这三个量清零。
+    **另外**：玩家按 B 看到的时钟是 page-0 的 `0x01A..0x01F`（秒低/高、分低/高、小时、AM-PM），
+    `0x046..0x04B` 是 stage 进化计时，别再拿它当时钟。复测用 `tools/audit/r3/serial_state.py`
+    （不复位读 `STATE age=`，两次采样算 ratio）。
+
 ## 待办（按优先级）
+
+- ~~（2026-11-19 round 128，最高优先）刷 2.1.5 复测时钟~~ **已完成 22:23**：`Wrote 753920` +
+  `Hash of data verified`，存档保留，同脚本 600 s 复测 **ratio 1.00000 (+0.0 s/day)**，缺陷关闭。
+  剩下只差**人眼看一眼菜单右下角版本号是不是 `2.1.5`**（固件只在菜单画 `esp_app_desc.version`，
+  串口打不出来；字节层已由 `Hash of data verified` 与产物内 `2.1.5`×1 保证）。
 
 0. **联机对战（D-Link）M0 已打通（2026-11-06）**——调研见 `docs/LINK-BATTLE-FEASIBILITY.md`，
    路线图见 `docs/ROADMAP-BATTLE.md`，M0 报告 `docs/M0A-BRICKEMUPY-LINK.md`。

@@ -28,7 +28,10 @@ FW = os.path.join('firmware', 'digimon-passport')
 FW_TOP = ['.clangd', 'CMakeLists.txt', 'partitions.csv', 'sdkconfig.defaults', 'dependencies.lock',
           'version.txt']
 FW_TREES = [('components/bsp', ('*.bin', '*.o', '*.exe')),
-            ('main', ('*.bin', '*.o', '*.exe', '*.log', 'sdkconfig.old'))]
+            # pet_evo.h / pet_sprites.h are the native-vpet prototype's data
+            # tables (~190 KB) and never belonged in the public tree
+            ('main', ('*.bin', '*.o', '*.exe', '*.log', 'sdkconfig.old',
+                      'pet_evo.h', 'pet_sprites.h'))]
 
 DOCS = ['HANDOFF.md', 'RETROSPECTIVE.md', 'studio-tool.md', 'OPTIMIZATION-STUDY.md',
         'BOUTS-WIDTH-STUDY.md', 'LINK-BATTLE-FEASIBILITY.md']

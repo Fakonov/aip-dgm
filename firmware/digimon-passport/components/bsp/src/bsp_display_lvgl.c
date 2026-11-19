@@ -20,8 +20,14 @@ static void rounded_flush_event(lv_event_t *event)
     lv_display_t *disp = lv_event_get_target(event);
     const lv_area_t *area = lv_event_get_param(event);
     lv_draw_buf_t *draw_buf = lv_display_get_buf_active(disp);
+    /* Both RGB565 byte orders are fine here: this callback only ever writes 0
+     * (black), which is the same word in either order.  It used to test for
+     * plain RGB565 only, so switching the display to RGB565_SWAPPED would have
+     * silently dropped the rounded-corner mask. */
+    const lv_color_format_t cf = disp ? lv_display_get_color_format(disp)
+                                      : LV_COLOR_FORMAT_UNKNOWN;
     if (!area || !draw_buf || !draw_buf->data ||
-        lv_display_get_color_format(disp) != LV_COLOR_FORMAT_RGB565) {
+        (cf != LV_COLOR_FORMAT_RGB565 && cf != LV_COLOR_FORMAT_RGB565_SWAPPED)) {
         return;
     }
 
@@ -41,8 +47,9 @@ static void rounded_flush_event(lv_event_t *event)
             memset(row, 0, (size_t)width * sizeof(uint16_t));
             continue;
         }
-        // Only clear pixels outside the visible span. The port swaps RGB565
-        // bytes after this event; black is 0 in either byte order.
+        // Only clear pixels outside the visible span. The port renders straight
+        // into RGB565_SWAPPED now (no post-flush byte swap), so this runs before
+        // the bytes go out; black is 0 in either byte order.
         const int32_t clear_left_end = visible_x1 > area->x2 ? area->x2 : visible_x1 - 1;
         const int32_t clear_right_start = visible_x2 < area->x1 ? area->x1 : visible_x2 + 1;
         for (int32_t x = area->x1; x <= clear_left_end; ++x) {
@@ -69,7 +76,14 @@ lv_display_t *bsp_lvgl_init(void) {
             ESP_LOGE(TAG, "LVGL port 初始化未完成，需重启后重试");
             return NULL;
         }
-        const lvgl_port_cfg_t pc = ESP_LVGL_PORT_INIT_CONFIG();
+        /* 20 ms tick instead of the 5 ms default: the tick timer is an esp_timer
+         * that wakes the LVGL task 200 times a second, and nothing on this screen
+         * needs better than the display refresh period (LV_DEF_REFR_PERIOD is
+         * 20 ms too).  50 wakes/s instead of 200 is worth 1-2 mA of idle current
+         * and it keeps the sleep windows long enough for light sleep later.
+         * (R3 audit §4.6) */
+        lvgl_port_cfg_t pc = ESP_LVGL_PORT_INIT_CONFIG();
+        pc.timer_period_ms = 20;
         if (lvgl_port_init(&pc) != ESP_OK) {
             s_port_init_failed = true;
             ESP_LOGE(TAG, "lvgl_port_init 失败，需重启后重试");
@@ -92,8 +106,14 @@ lv_display_t *bsp_lvgl_init(void) {
         .rotation = { .swap_xy = BSP_LCD_ROTATED_90,
                       .mirror_x = BSP_LCD_ROTATED_90,
                       .mirror_y = false },
-        // swap_bytes:LVGL 输出小端 RGB565,ST7789 走 SPI 要大端 → 需交换高低字节。
-        .flags = { .buff_dma = true, .swap_bytes = true },
+        // ST7789 走 SPI 要大端 RGB565。以前是让 port 在每次 flush 末尾对整个
+        // 区域跑一遍 lv_draw_sw_rgb565_swap()（192x183 = 35,136 个半字，
+        // ≈0.9–1.3 ms @160 MHz，纯 CPU）。改成让 LVGL 直接渲染成
+        // RGB565_SWAPPED：字节序在 blend 里顺带解决，不再有那一趟拷贝。
+        // 这条路径本来就在（CONFIG_LV_DRAW_SW_SUPPORT_RGB565_SWAPPED=y）。
+        // (R3 audit §3.1 / §5.3)
+        .color_format = LV_COLOR_FORMAT_RGB565_SWAPPED,
+        .flags = { .buff_dma = true, .swap_bytes = false },
     };
     // The port mutex is recursive. Keep registration and the mask callback in
     // one critical section, before the new display can produce its first flush.

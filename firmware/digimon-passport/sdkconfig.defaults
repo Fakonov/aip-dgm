@@ -112,3 +112,10 @@ CONFIG_LV_DRAW_SW_SUPPORT_I1=n
 # stops being a failure mode.  LV_MEM_SIZE_KILOBYTES above is unused in this
 # mode; it stays so flipping back to the builtin allocator reproduces the pool.
 CONFIG_LV_USE_CLIB_MALLOC=y
+
+# --- audit R3 2026-11-13 ------------------------------------------------
+# Button polling 5 ms -> 20 ms.  iot_button runs its scan from an esp_timer, so
+# 5 ms meant 200 timer wakes a second for a keypad whose owner (the ROM) samples
+# K0 at ~2 Hz; 20 ms is still 6x faster than the ROM and still well under the
+# 50 ms minimum hold the ROM accepts.  Fewer wakes = longer idle windows.
+CONFIG_BUTTON_PERIOD_TIME_MS=20

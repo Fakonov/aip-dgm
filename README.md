@@ -1,4 +1,4 @@
-﻿# Digital Monster on AI Passport
+# Digital Monster on AI Passport
 
 <p align="center">
   <img src="docs/images/glass-game.png" width="300" alt="真机玻璃：比特兽在睡觉">
@@ -15,7 +15,7 @@
 （`pc trace sha256: f42d1802…`）。屏幕版式按真机玻璃实测还原：一块玻璃三条带 ——
 上下各 4 枚功能图标（独立 LCD 段，由 ROM 自己点亮）、中间 32×16 点阵。
 
-**v2.1.2** · MIT · 不含任何 Bandai 的固件或美术资源（ROM 需自备，见 `roms/README.md`）
+**v2.1.5** · MIT · 不含任何 Bandai 的固件或美术资源（ROM 需自备，见 `roms/README.md`）
 
 ## 特性
 
@@ -37,8 +37,10 @@
   分栏卡片树，命中当前数据的分支高亮
   > 公开仓库版的 `tools/digimon_studio.html` 是**无图精简版**：卡片配图与整幅官方路线图
   > 裁自说明书扫描件，版权原因不随仓库分发。带图完整版只随本地交付包提供。
-- **真跑式跳过时间**：`SKIP TIME` 真执行游戏时间（C3 上约 0.98 s / 游戏分钟），不是改数值；
-  档位 OFF / 5M / 30M / 1H / 2H / 12H / 24H，执行时玻璃上有进度卡，C 可中止
+- **真跑式跳过时间**：`SKIP TIME` 真执行游戏时间（C3 上约 1.25 s / 游戏分钟），不是改数值；
+  档位 OFF / 5M / 30M / 1H / 2H / 4H / 6H / 8H / 12H，执行时玻璃上有进度卡，C 可中止
+- **时钟按真实时间走**：每帧的时间片由 `esp_timer` 墙钟决定，多推的部分下一帧扣回；
+  真机 600 s 复测偏差 0.000 %（2.1.5 之前一天快 4.8 分钟）
 
 ## 快速开始
 

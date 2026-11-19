@@ -37,6 +37,7 @@
 #include "dg_theme.h"
 #include "dg_backdrop.h"
 #include "dg_brick.h"
+#include "dg_glass_paint.h"
 #include "dg_rom_store.h"
 #include "dg_link.h"
 #include "dg_cards.h"
@@ -175,6 +176,53 @@ static int s_view_x, s_view_y;          /* canvas origin on the panel */
 #define TICKS_PER_FRAME (OSC1_HZ * FRAME_MS / 1000)
 #define STEP_GUARD      40000
 #define ROM_HOLD_US     1500000                 /* long-press OK to switch ROM */
+
+/* --- OSC1 frame budget --------------------------------------------------
+ * The ROM's own clock -- the HH:MM:SS on the clock screen, page-0 nibbles
+ * 0x01A..0x01F -- is driven by dg_osc1_ticks(), so every tick handed to the
+ * emulator beyond the 20 ms budget shows up as a clock that runs fast.
+ * A fixed "step until ticks >= now + 655" loop cannot be exact: dg_step()
+ * cannot stop mid-instruction (it burns ~7 OSC1 ticks in slow mode, ~0.22 in
+ * fast mode), so every frame overshoots by part of one instruction.  Measured
+ * on the V1 ROM with the 2.1.4 loop: 32889 ticks/s instead of 32768 (+0.37 %),
+ * and over an 8 h skip the clock was 0.33 % ahead of real time.  The slow/fast
+ * mix follows whatever the ROM is doing, so the gain is not even constant --
+ * that is the "the time in the game keeps getting faster" report.
+ *
+ * Two things fix it.  The budget comes from the wall clock (esp_timer) instead
+ * of a fixed 655-tick constant, so a slow frame is paid back by the next one
+ * and a hitch cannot silently stall the game clock; and the fraction of a
+ * frame (0.36 tick) plus the previous frame's overshoot are both carried into
+ * the next budget.  Long-run average is then exactly OSC1_HZ ticks per second. */
+static int64_t  s_frame_us;     /* esp_timer stamp of the last budget, 0 = re-arm */
+static int64_t  s_frame_rem;    /* sub-tick remainder, 1/1000 tick */
+static int32_t  s_frame_over;   /* ticks advanced past the last frame target */
+
+static uint32_t osc1_frame_budget(void)
+{
+    int64_t now = esp_timer_get_time();
+    if (s_frame_us == 0) s_frame_us = now - (int64_t)FRAME_MS * 1000;
+    int64_t dt = now - s_frame_us;
+    s_frame_us = now;
+
+    /* A hitch (full glass repaint, NVS commit) must not hand the ROM half a
+     * second of emulation in one frame: cap the catch-up at four frames. */
+    const int64_t cap = (int64_t)FRAME_MS * 1000 * 4;
+    if (dt < 0) dt = 0;
+    if (dt > cap) dt = cap;
+
+    /* 32768 ticks/s = 32.768 ticks/ms; work in 1/1000 tick so the 0.36 tick
+     * of a 20 ms frame is carried instead of truncated (655, not 655.36). */
+    int64_t acc = (dt * OSC1_HZ) / 1000 + s_frame_rem;
+    int32_t whole = (int32_t)(acc / 1000);
+    s_frame_rem = acc % 1000;
+
+    if (s_frame_over > whole) s_frame_over = whole;
+    if (s_frame_over < -whole) s_frame_over = -whole;
+    int32_t owed = whole - s_frame_over;
+    if (owed < 0) owed = 0;
+    return (uint32_t)owed;
+}
 
 /* ---- glass palette + shell colourways -------------------------------------
  * The glass (bands + matrix) is one fixed piece of hardware, so its three tones
@@ -507,8 +555,9 @@ static int stage_minutes_next(void)
  * Writing the stage clock forward does not work: the ROM only notices an
  * evolution when its own tick counters walk over next_evolution_at, so a
  * 0 -> 120 minute poke leaves the egg unhatched forever (measured in the host
- * probe and in the simulator).  The C3 runs the core ~55x real time, so the
- * cost is ~1.8 s per game minute: 5M = 9 s, 30M = 55 s, 2H = 3.5 min.
+ * probe and in the simulator).  The wall clock cost is what the "/nS" suffixes
+ * in SKIP_TEXT quote, at the measured ~75 s per game hour: 5M = 9 s,
+ * 30M = 38 s, 2H = 2.5 min, 8H = 10 min, 12H = 15 min.
  *
  * Three things matter for the owner:
  *   - the result is written to NVS before returning, otherwise a power cycle
@@ -521,12 +570,12 @@ static int stage_minutes_next(void)
 static void rom_skip_minutes(int minutes, const char *label)
 {
     if (!s_have_rom || minutes <= 0) return;
-    /* 64-bit on purpose: a 24 h skip is 2,831,155,200 osc1 ticks, and adding
+    /* 64-bit on purpose: a 12 h skip is 1,415,577,600 osc1 ticks, and adding
      * that to a uint32 `start` overflows once the board has been running for
-     * ~12.4 h (start > 2^32 - total).  The wrapped target then looks already
+     * ~24.8 h (start > 2^32 - total).  The wrapped target then looks already
      * passed, the loop exits immediately and the skip is silently thrown away
-     * -- the "24H flashes and nothing happens" report.  Instead of an absolute
-     * target, accumulate elapsed ticks with wrap-safe subtraction. */
+     * -- the "long skip flashes and nothing happens" report.  Instead of an
+     * absolute target, accumulate elapsed ticks with wrap-safe subtraction. */
     const uint64_t total_ticks = (uint64_t)minutes * 60u * OSC1_PER_SEC;
 
     /* Both entry points -- the SKIP TIME row and the console's `SKIP n` -- have
@@ -597,6 +646,9 @@ static void rom_skip_minutes(int minutes, const char *label)
     s_pet_sec += done_ticks / OSC1_PER_SEC;   /* skipped time counts as owned time */
     s_age_last_tick = dg_osc1_ticks();        /* do not count it twice in age_tick */
     s_age_frac = 0;
+    s_frame_over = 0;                         /* the skip ran its own budget, not a frame's */
+    s_frame_rem = 0;
+    s_frame_us = 0;                           /* re-arm the wall-clock budget */
     s_pic_valid = false;
     s_icon_state = 0xFF;
     s_icon_stale = true;
@@ -847,17 +899,7 @@ static inline uint16_t darken565(uint16_t c)
     return (uint16_t)((r << 11) | (g << 5) | b);
 }
 
-/* One RGB565 colour a little darker (integer only).  Two users: the 6 % mesh
- * that runs through every cell, and the dot ink itself -- on the photo backdrop
- * the dots read lighter than they do on the flat CLASSIC glass, so both themes
- * now share an ink that is one step deeper than the tone table. */
-static inline uint16_t dim565(uint16_t v, uint16_t num, uint16_t den)
-{
-    uint16_t r5 = (uint16_t)(((v >> 11) & 0x1F) * num / den);
-    uint16_t g6 = (uint16_t)(((v >> 5) & 0x3F) * num / den);
-    uint16_t b5 = (uint16_t)((v & 0x1F) * num / den);
-    return (uint16_t)((r5 << 11) | (g6 << 5) | b5);
-}
+/* dim565() lives in dg_glass_paint.h (the host test paints the same cells). */
 
 static int render_lcd(void)
 {
@@ -865,6 +907,10 @@ static int render_lcd(void)
     const uint32_t vlen = dg_vram_len();
     uint8_t cur[DG_LCD_H][DG_LCD_W];
     bool changed = !s_pic_valid;
+    /* Bounding box of the cells that actually flipped, in matrix coordinates.
+     * Only the cells inside it are repainted, and only that rectangle is handed
+     * to LVGL -- a one-dot change used to cost a 70 KB canvas flush (R3 §5.2). */
+    int bx1 = DG_LCD_W, by1 = DG_LCD_H, bx2 = -1, by2 = -1;
 
     for (int r = 0; r < DG_LCD_H; r++) {
         for (int c = 0; c < DG_LCD_W; c++) {
@@ -873,7 +919,13 @@ static int render_lcd(void)
             uint8_t bit  = (uint8_t)(cell >> 8);
             uint8_t on = (byte < vlen) && ((v[byte] >> bit) & 1u) ? 1u : 0u;
             cur[r][c] = on;
-            if (on != s_last_pic[r][c]) changed = true;
+            if (on != s_last_pic[r][c]) {
+                changed = true;
+                if (c < bx1) bx1 = c;
+                if (c > bx2) bx2 = c;
+                if (r < by1) by1 = r;
+                if (r > by2) by2 = r;
+            }
         }
     }
 
@@ -884,91 +936,58 @@ static int render_lcd(void)
 #endif
 
     const uint16_t *tone = GLASS_TONE[DG_LCD_TONE];
-    const uint16_t base = tone[0], gap = tone[1];
-    /* ~6 % deeper than the table's lit tone: "slightly darker dots" */
-    const uint16_t lit = dim565(tone[2], 15, 16);
+    dgp_glass_t g = {
+        .buf = s_canvas_buf, .w = s_view_w, .h = s_view_h,
+        .mat_y = DG_MAT_Y, .pitch = DG_PITCH, .style = s_style,
+        .base = tone[0], .gap = tone[1],
+        /* ~6 % deeper than the table's lit tone: "slightly darker dots" */
+        .lit = dim565(tone[2], 15, 16),
+        .backdrop = dg_backdrop, .pal = dg_backdrop_pal,
+    };
+    /* The shadow matrix is only meaningful once a full pass has run: with
+     * s_pic_valid low the canvas holds something else (another ROM, a style
+     * switch, a wake from dark), so the first pass must repaint everything. */
+    const int partial = s_pic_valid;
 
-    /* 1. the whole glass, including both icon bands and the blank margins.
-     * Style C decodes the full-resolution backdrop straight in.  It is stored
-     * as I8 (one index byte per pixel) because the artwork only has 206 distinct
-     * RGB565 values: the palette reproduces it exactly, and this reads half the
-     * flash bytes a 70 KB memcpy would.  (R2 audit §4.2, MSE 0.) */
-    if (s_style == STYLE_RETAIL) {
-        for (int i = 0; i < DG_BACKDROP_N; i++) s_canvas_buf[i] = dg_backdrop_pal[dg_backdrop[i]];
+    /* 1. Full repaint only: the whole glass, both icon bands and the blank
+     *    margins.  Style C decodes the full-resolution backdrop straight in --
+     *    I8 indices over 206 distinct colours, zero quantisation (R2 §4.2).
+     *    A dirty pass never comes here: it touches cells only, so the bands and
+     *    the top margin keep whatever the last full pass left there. */
+    if (!partial) {
+        dgp_fill(&g);
+        dgp_top_line(&g);
+    }
+
+    /* 2. The dot matrix.  A full repaint stamps all 512 cells; a dirty pass
+     *    stamps only the cells that flipped.  Either way a cell is
+     *    self-contained (dgp_cell reads the backdrop, never the canvas), so a
+     *    cell painted twice looks exactly like one painted once -- that is the
+     *    property src/glass_paint_test.c proves on the host. */
+    if (partial) {
+        for (int r = by1; r <= by2; r++) {
+            for (int c = bx1; c <= bx2; c++) {
+                if (cur[r][c] != s_last_pic[r][c]) dgp_cell(&g, r, c, cur[r][c]);
+            }
+            memcpy(s_last_pic[r], cur[r], DG_LCD_W);
+        }
+        /* Hand LVGL just the dirty rectangle, in absolute screen coordinates:
+         * lv_obj_invalidate_area() forwards straight to lv_inv_area(). */
+        lv_area_t a;
+        a.x1 = s_view_x + bx1 * DG_PITCH;
+        a.x2 = s_view_x + (bx2 + 1) * DG_PITCH - 1;
+        a.y1 = s_view_y + DG_MAT_Y + by1 * DG_PITCH;
+        a.y2 = s_view_y + DG_MAT_Y + (by2 + 1) * DG_PITCH - 1;
+        lv_obj_invalidate_area(s_canvas, &a);
     } else {
-        for (int i = 0; i < s_view_w * s_view_h; i++) s_canvas_buf[i] = base;
-    }
-
-    /* 2. the dot matrix: every cell is PITCH square and carries the grid line
-     *    on its right and bottom, so the mesh closes at the bottom and on the
-     *    right.  The block is exactly 32 x 16 pitches (224 x 112), which leaves
-     *    no pixel for a line above row 0 - with only that rule the top row sat
-     *    open against the blank glass.  Steal one pixel from the top margin and
-     *    draw the closing line there.  (The left edge is flush with the glass
-     *    itself and needs none: the bezel recess is the border.) */
-    /* Closing line above row 0 — without it the mesh has no top edge.  Style C
-     * shades the backdrop (same 6 % as the cell mesh) instead of painting the
-     * classic gap tone, so the line sits in the photo rather than on it. */
-    {
-        uint16_t *top = &s_canvas_buf[(DG_MAT_Y - 1) * s_view_w];
-        for (int x = 0; x < s_view_w; x++) {
-            if (s_style == STYLE_RETAIL) {
-                top[x] = dim565(top[x], 15, 16);
-            } else {
-                top[x] = gap;
-            }
+        for (int r = 0; r < DG_LCD_H; r++) {
+            for (int c = 0; c < DG_LCD_W; c++) dgp_cell(&g, r, c, cur[r][c]);
         }
+        memcpy(s_last_pic, cur, sizeof(s_last_pic));
+        s_icon_stale = true;     /* the bands were just wiped: re-blit them */
+        lv_obj_invalidate(s_canvas);
     }
-    const int p = DG_PITCH;
-    for (int r = 0; r < DG_LCD_H; r++) {
-        uint16_t *row = &s_canvas_buf[(DG_MAT_Y + r * p) * s_view_w];
-        for (int c = 0; c < DG_LCD_W; c++) {
-            /* Per-cell backdrop.  The colour matrix samples its own colour out of
-             * dg_matrix_bg; the classic theme keeps the flat glass tone.  The grid
-             * line is a darkened copy of whatever the cell sits on, so the mesh
-             * stays visible over a photo instead of turning into a cage of
-             * glass-coloured lines. */
-            if (s_style == STYLE_RETAIL) {
-                /* Backdrop is already in place: draw the dot (if lit) and a light
-                 * mesh on the empty cells only, so a dot never gets sliced by the
-                 * grid line. */
-                uint16_t on = lit;
-                for (int dy = 0; dy < p; dy++) {
-                    uint16_t *dst = &row[dy * s_view_w + c * p];
-                    int edge_y = (dy == p - 1);
-                    for (int dx = 0; dx < p; dx++) {
-                        if (cur[r][c]) {
-                            /* The mesh runs through a lit cell too.  Filling the
-                             * whole cell made a run of dots merge into one solid
-                             * bar -- no gap visible between neighbours, which is
-                             * what the owner reported.  CLASSIC has always drawn
-                             * the gap line inside lit cells, so draw it here too
-                             * and the two themes finally look the same. */
-                            dst[dx] = (edge_y || dx == p - 1) ? gap : on;
-                        } else if (edge_y || dx == p - 1) {
-                            /* Mesh = the backdrop itself, 6 % darker.  A fixed grey
-                             * line turns into white graph paper over the sand. */
-                            dst[dx] = dim565(dst[dx], 15, 16);
-                        }
-                    }
-                }
-            } else {
-                uint16_t color = cur[r][c] ? lit : base;
-                for (int dy = 0; dy < p; dy++) {
-                    uint16_t *dst = &row[dy * s_view_w + c * p];
-                    int edge_y = (dy == p - 1);
-                    for (int dx = 0; dx < p; dx++) {
-                        dst[dx] = (edge_y || dx == p - 1) ? gap : color;
-                    }
-                }
-            }
-        }
-    }
-
-    memcpy(s_last_pic, cur, sizeof(s_last_pic));
     s_pic_valid = true;
-    s_icon_stale = true;         /* the bands were just wiped: re-blit them */
-    lv_obj_invalidate(s_canvas);
 #ifdef DG_SIM_UART0_INPUT
     {
         uint32_t dt = (uint32_t)(esp_timer_get_time() - diag_t0);
@@ -1044,21 +1063,35 @@ static void render_icons(void)
     uint8_t state = icon_bits();
     if (!s_icon_stale && state == s_icon_state) return;
 
-    const int slot_w = DG_GLASS_W / 4;          /* 8 columns = 56 px at pitch 7 */
+    /* Which slots need work.  A wiped canvas (full repaint, style switch) means
+     * all eight; otherwise only the segments that actually flipped.  Re-blitting
+     * the whole band on every matrix change cost 340 us for nothing, because the
+     * dirty-rect pass in render_lcd() no longer touches the bands at all. */
+    const uint8_t dirty = s_icon_stale ? 0xFFu : (uint8_t)(state ^ s_icon_state);
+    const int slot_w = DG_GLASS_W / 4;          /* 8 columns = 48 px at pitch 6 */
     for (int i = 0; i < 8; i++) {
+        if (!(dirty & (1u << i))) continue;
         int col = i & 3, row = i >> 2;
         int x = col * slot_w;
         int y = row ? DG_GLASS_H - DG_BAND_H : 0;
         blit_slot((state >> i) & 1u ? ICON_FILLED[i] : ICON_OUTLINE[i], x, y,
                   (state >> i) & 1u);
+        if (!s_icon_stale) {
+            /* Only this slot's band changed: hand LVGL that rectangle. */
+            lv_area_t a;
+            a.x1 = s_view_x + x;
+            a.y1 = s_view_y + y;
+            a.x2 = s_view_x + x + slot_w - 1;
+            a.y2 = s_view_y + y + DG_BAND_H - 1;
+            lv_obj_invalidate_area(s_canvas, &a);
+        }
     }
+    if (s_icon_stale) lv_obj_invalidate(s_canvas);   /* whole glass was wiped */
     s_icon_stale = false;
-    lv_obj_invalidate(s_canvas);
 
     /* Text-mode acceptance check for hardware runs: bit i = icon i lit,
      * plus the ROM's own UI state so the log can be read without a camera.
-     * Only on a real state change - the bands are re-blitted every time the
-     * matrix repaints, and logging each of those buried the console. */
+     * Only on a real state change. */
     if (state != s_icon_state) {
         s_icon_state = state;
         ESP_LOGI(TAG, "icons=%02X mode=%X sub=%X",
@@ -1093,14 +1126,19 @@ enum { M_TIME, M_ROM, M_BATTLE, M_APPEAR, M_POWER };
 enum { SUB_TIME, SUB_APPEAR, SUB_POWER };
 
 /* SKIP TIME: consumed when the panel closes, never persisted */
-/* 12H / 24H were added for the long skips (todo #1).  The array is uint16_t on
- * purpose: 24 * 60 = 1440 does not fit in a uint8_t and would silently wrap to
- * 160 minutes.  The wall-clock estimates assume the measured 48x of real time
- * (2H took 150 s), so 12H = 900 s and 24H = 1800 s.  Keep them honest if the
+/* Nine rungs, step-up by length: OFF / 5M / 30M / 1H / 2H / 4H / 6H / 8H / 12H.
+ * 24H was dropped on purpose (user request): a skip really executes the game
+ * time, so 24H costs ~30 min of wall clock -- longer than anyone will sit in
+ * front of a progress card -- while 4H/6H/8H fill the gap that used to jump
+ * straight from 2H to half a day.  The array is uint16_t on purpose: 12 * 60 =
+ * 720 does not fit in a uint8_t and would silently wrap to 208 minutes.  The
+ * wall-clock estimates assume the measured 75 s per game hour (2H took 150 s),
+ * so 4H = 300 s, 6H = 450 s, 8H = 600 s, 12H = 900 s.  Keep them honest if the
  * skip path gets faster. */
-static const uint16_t SKIP_MINUTES[] = { 0, 5, 30, 60, 120, 12 * 60, 24 * 60 };
+static const uint16_t SKIP_MINUTES[] = { 0, 5, 30, 60, 120,
+                                         4 * 60, 6 * 60, 8 * 60, 12 * 60 };
 static const char *const SKIP_TEXT[] = { "OFF", "5M/9S", "30M/38S", "1H/75S", "2H/150S",
-                                         "12H/900S", "24H/1800S" };
+                                         "4H/300S", "6H/450S", "8H/600S", "12H/900S" };
 #define SKIP_COUNT ((int)(sizeof SKIP_MINUTES / sizeof SKIP_MINUTES[0]))
 static uint8_t s_skip_idx;
 
@@ -3484,13 +3522,14 @@ static void dg_task(void *arg)
         ESP_LOGW(TAG, "no ROM in the 'roms' partition: glass shows NO ROM until one is uploaded");
     } else {
         int64_t t0 = esp_timer_get_time();
-        uint32_t tick_target = dg_osc1_ticks() + TICKS_PER_FRAME;
+        uint32_t tick_target = dg_osc1_ticks() + osc1_frame_budget();
         int guard = 0;
         while ((int32_t)(dg_osc1_ticks() - tick_target) < 0 && guard++ < STEP_GUARD) {
             uint32_t t_link = dg_osc1_ticks();
             dg_step();
             dglink_tick(&g_dglink, dg_osc1_ticks() - t_link);
         }
+        s_frame_over = (int32_t)(dg_osc1_ticks() - tick_target);
         ESP_LOGI(TAG, "first frame (%d ticks, fastmode=%d) took %lld us",
                  TICKS_PER_FRAME, dg_cpu_fast_mode(), (long long)(esp_timer_get_time() - t0));
         t0 = esp_timer_get_time();
@@ -3506,13 +3545,14 @@ static void dg_task(void *arg)
     TickType_t next = xTaskGetTickCount();
     for (;;) {
         if (s_have_rom) {
-            uint32_t tick_target = dg_osc1_ticks() + TICKS_PER_FRAME;
+            uint32_t tick_target = dg_osc1_ticks() + osc1_frame_budget();
             int guard = 0;
             while ((int32_t)(dg_osc1_ticks() - tick_target) < 0 && guard++ < STEP_GUARD) {
                 uint32_t t_link = dg_osc1_ticks();
                 dg_step();
                 dglink_tick(&g_dglink, dg_osc1_ticks() - t_link);
             }
+            s_frame_over = (int32_t)(dg_osc1_ticks() - tick_target);
             age_tick();          /* hatch detection + 养育总时间 */
         }
 
